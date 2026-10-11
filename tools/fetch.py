@@ -252,9 +252,26 @@ QUESTION_STARTS = (
 )
 
 
+# A page's meta description is usually a sentence about the publisher rather than about the story.
+# Those are dropped whole: a card with no second line beats a card whose second line is an advert.
+SELF_DESCRIPTION = (
+    re.compile(r"\bis about technology and how it makes us feel\b", re.I),
+    re.compile(r"\bwe offer our audience\b", re.I),
+    re.compile(r"\bfounded in \d{4}\b", re.I),
+    re.compile(r"\b(?:the )?latest (?:news|developments|updates) (?:in|on|from)\b", re.I),
+    re.compile(r"\bleading (?:source|publication|provider|platform)\b", re.I),
+    re.compile(r"\bour mission is\b", re.I),
+    re.compile(r"\b(?:sign up|subscribe) (?:for|to|now)\b", re.I),
+    re.compile(r"\bdelivered (?:to your inbox|straight to your)\b", re.I),
+    re.compile(r"\ball things (?:ai|artificial intelligence)\b", re.I),
+)
+
+
 def clean_summary(summary: str) -> str:
     """Strip feed furniture, and return "" when what is left was never a summary at all."""
     text = summary or ""
+    if any(pattern.search(text) for pattern in SELF_DESCRIPTION):
+        return ""
     for pattern in BOILERPLATE:
         text = pattern.sub(" ", text)
     text = re.sub(r"\s+", " ", text).strip(" -\u2013\u2014\t")

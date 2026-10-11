@@ -118,6 +118,11 @@ class SummaryHygiene(unittest.TestCase):
         kept = fetcher.clean_summary("On Equity, we debate the impact of data center moratoriums and whether the AI industry has a communication problem.")
         self.assertIn("data center moratoriums", kept)
 
+    def test_a_publishers_description_of_itself_is_dropped(self):
+        self.assertEqual(fetcher.clean_summary(
+            "The Verge is about technology and how it makes us feel. Founded in 2011, we offer our audience everything."), "")
+        self.assertEqual(fetcher.clean_summary("The latest news in AI, delivered to your inbox."), "")
+
     def test_a_summary_that_repeats_the_headline_is_dropped(self):
         self.assertTrue(fetcher._echoes("Superintelligence race moves to desk work", "Superintelligence race moves to desk work"))
 
