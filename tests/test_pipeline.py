@@ -13,6 +13,8 @@ import pathlib
 import re
 import sys
 import tempfile
+import shutil
+import subprocess
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -393,6 +395,38 @@ class SiteBuild(unittest.TestCase):
             self.assertIn(key, listed, f"row source {key!r} has no sidebar button")
         self.assertIn("state.sources.size && !state.sources.has(row.dataset.src)", page)
         self.assertIn("article.dataset.src = item.src", page)
+
+    def test_a_sticky_button_gets_the_reader_back_to_the_top(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="to-top"', page)
+        # hidden by display, so an author rule cannot lose to the browser's own [hidden]
+        self.assertIn("#to-top { display:none;", page)
+        self.assertIn("#to-top.is-on { display:flex; }", page)
+        self.assertIn("window.scrollY > 700", page)
+        self.assertIn('id="top-mark"', page)
+        self.assertIn("new IntersectionObserver(function (entries)", page)
+        self.assertIn("setInterval(watchScroll, 250)", page)
+        self.assertIn("window.scrollTo(0, 0);", page)
+
+    def test_the_inline_scripts_are_valid_javascript(self):
+        """A syntax error in one script block silently kills it, filters and all.
+
+        Catches an unbalanced brace or a broken string. It does *not* catch a collision with a browser
+        global (a top-level `const top` against window.top) because node has no such global - only the
+        in-browser walk-through sees that one.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed here; the in-browser check covers this")
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        blocks = build_site.re.findall(r"<script>(.*?)</script>", page, build_site.re.S)
+        self.assertTrue(blocks, "the page should carry its own scripts")
+        for n, block in enumerate(blocks):
+            source = pathlib.Path(self.tmp.name) / f"inline{n}.js"
+            source.write_text(block, encoding="utf-8")
+            result = subprocess.run([node, "--check", str(source)], capture_output=True)
+            self.assertEqual(result.returncode, 0,
+                             f"script block {n} does not parse: {result.stderr.decode()[:300]}")
 
     def test_nothing_renders_as_python_none(self):
         for path in [p for p in self.site.rglob("*.html")]:

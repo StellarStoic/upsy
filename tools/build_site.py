@@ -252,6 +252,17 @@ CSS = """
   .net-item:hover { background:var(--panel); }
   .net-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .net-item.is-on { background:var(--panel); border-left-color:var(--hot); color:var(--hot); font-weight:600; }
+  /* Appears once the reader is a few articles down. Hidden by display rather than [hidden]:
+     an author rule outranks the browser's own, which is how a filter here once changed nothing. */
+  #to-top { display:none; position:fixed; right:18px; bottom:18px; z-index:40; gap:5px;
+    align-items:center; padding:9px 13px; border:1px solid var(--line); border-radius:999px;
+    background:var(--panel); color:var(--ink); font:inherit; font-size:.82rem; cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,.45); }
+  #to-top.is-on { display:flex; }
+  #to-top:hover { border-color:var(--hot); color:var(--hot); }
+  #to-top span { font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; }
+  /* Sits 700px into the document: once it leaves the viewport the reader is into the stories. */
+  #top-mark { position:absolute; top:700px; left:0; width:1px; height:1px; }
   .net-all { margin:8px 0 0; font-size:.78rem; opacity:.7; }
   /* `.row` sets display:grid, which outranks the browser's own [hidden] { display:none } - so a
      filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
@@ -409,7 +420,8 @@ FILTER_BAR = """<div class="bar">
   <input id="q" type="search" placeholder="filter titles and sources" aria-label="filter titles and sources">
   <span class="spacer"></span>
   <span id="freshness">static page, rebuilt by a workflow</span>
-</div>"""
+</div>
+<button id="to-top" type="button" aria-label="back to the top">&#8593;<span>top</span></button>"""
 
 SIGNAL_JS = """<script>
 (function () {
@@ -494,6 +506,35 @@ SIGNAL_JS = """<script>
     }, 300000);
   }
 })();
+  (function () {
+    // Its own scope on purpose: a bare `const top` at the top level of a classic script collides with
+    // window.top and throws a SyntaxError, which silently takes the whole script - filters included.
+    const toTop = document.getElementById('to-top');
+    const mark = document.getElementById('top-mark');
+    function watchScroll() {
+      toTop.classList.toggle('is-on', window.scrollY > 700);
+    }
+    window.addEventListener('scroll', watchScroll, { passive: true });
+    // The observer is what actually drives it: it reacts to the marker leaving the viewport however
+    // the reader got there, including a jump from the keyboard, a find-in-page or a restored position,
+    // none of which reliably produce a scroll event this code would catch in time.
+    // Belt and braces, and not decoration: some engines - a headless session with no compositor among
+    // them - deliver neither a scroll event nor an observer callback for a programmatic scroll, so
+    // without this the button simply never appears however far down the reader is. Four number
+    // comparisons a second costs nothing.
+    setInterval(watchScroll, 250);
+    if (window.IntersectionObserver && mark) {
+      new IntersectionObserver(function (entries) {
+        toTop.classList.toggle('is-on', !entries[0].isIntersecting);
+      }, { threshold: 0 }).observe(mark);
+    }
+    toTop.addEventListener('click', function () {
+      // Instant, not smooth: this is the "get me back up quickly" control, and a smooth request is
+      // silently ignored where there is no compositor to animate it - including in a headless check.
+      window.scrollTo(0, 0);
+    });
+    watchScroll();
+  })();
 </script>"""
 
 
@@ -528,6 +569,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
                            upsy=counts["upsy"], updated=age(data["generated"], now))
     return f"""{head}{header}{FILTER_BAR}
+<span id="top-mark" aria-hidden="true"></span>
 <main>
   <section class="rows" id="stream">
 {rows}
