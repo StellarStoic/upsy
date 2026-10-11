@@ -138,6 +138,11 @@ def shoot(browser: str, url: str, out: pathlib.Path, width: int, height: int, wa
     return True, ""
 
 
+def save(shots: dict) -> None:
+    SHOT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    SHOT_STATE.write_text(json.dumps(shots, ensure_ascii=False, indent=0), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max", type=int, default=60, help="how many to shoot in this run")
@@ -164,8 +169,7 @@ def main() -> int:
           f"{len(todo)} need a screenshot")
 
     if not SHOT_STATE.exists():
-        SHOT_STATE.parent.mkdir(parents=True, exist_ok=True)
-        SHOT_STATE.write_text("{}\n", encoding="utf-8")
+        save({})
 
     if args.dry_run:
         for item in todo[:20]:
@@ -180,8 +184,11 @@ def main() -> int:
     if not browser:
         # Not a failure: without a browser the site simply keeps the text-first cards it has.
         print("no browser on this machine, so no screenshots this run")
+        # Written before returning: this is the case the record exists for, and returning first is
+        # why the page kept reporting "not run" for a run that had already decided.
         record_status(shots, failures, {"browser": "", "wanted": len(todo), "taken": 0,
                                         "refused": 0, "note": "no browser found"})
+        save(shots)
         return 0
     print(f"   using {browser}")
 
@@ -210,7 +217,7 @@ def main() -> int:
     record_status(shots, failures, {"browser": browser, "wanted": len(todo), "taken": taken,
                                     "refused": refused,
                                     "note": "budget reached" if taken + refused < len(todo) else ""})
-    SHOT_STATE.write_text(json.dumps(shots, ensure_ascii=False, indent=0), encoding="utf-8")
+    save(shots)
     total = sum(1 for v in shots.values() if isinstance(v, dict) and v.get("file"))
     print(f"shot {taken}, refused {refused}, {total} shot(s) on file, "
           f"{len(failures)} page(s) on the no-go list")
