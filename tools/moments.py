@@ -110,10 +110,18 @@ def call_model(token: str, base: str, model: str, prompt: str) -> str:
     request = urllib.request.Request(
         base.rstrip("/") + "/chat/completions", data=payload,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "Accept": "application/json",
+                 "Accept": "application/json", "X-GitHub-Api-Version": "2022-11-28",
                  "User-Agent": "upsy.si/1.0 (+https://upsy.si/)"})
     with urllib.request.urlopen(request, timeout=90) as response:
-        body = json.loads(response.read().decode("utf-8", "replace"))
+        raw = response.read().decode("utf-8", "replace")
+        status = getattr(response, "status", 200)
+        kind = (response.headers.get("Content-Type") or "?").split(";")[0].strip()
+    try:
+        body = json.loads(raw)
+    except json.JSONDecodeError:
+        # Say what actually came back, without ever echoing the body: it could reflect the token.
+        shape = "html" if raw.lstrip()[:1] == "<" else ("empty" if not raw.strip() else "other")
+        raise ValueError(f"HTTP {status} {kind} body={shape}") from None
     return body["choices"][0]["message"]["content"]
 
 
