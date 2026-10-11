@@ -296,6 +296,14 @@
       "tier": 2,
       "enabled": true,
       "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "hacker-news",
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/rss",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://news.ycombinator.com/"
     }
   ]
 }
