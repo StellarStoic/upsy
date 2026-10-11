@@ -122,7 +122,13 @@ def call_model(token: str, base: str, model: str, prompt: str) -> str:
         # Say what actually came back, without ever echoing the body: it could reflect the token.
         shape = "html" if raw.lstrip()[:1] == "<" else ("empty" if not raw.strip() else "other")
         raise ValueError(f"HTTP {status} {kind} body={shape}") from None
-    return body["choices"][0]["message"]["content"]
+    message = body["choices"][0]["message"]
+    # Some models put the answer in a reasoning field and leave content empty.
+    content = (message.get("content") or message.get("reasoning_content") or "").strip()
+    if not content:
+        keys = ",".join(sorted(message.keys()))[:80]
+        raise ValueError(f"no content in the reply; message keys: {keys}")
+    return content
 
 
 def parse_reply(reply: str, strict: bool = True) -> dict:
@@ -217,7 +223,9 @@ def main() -> int:
                 try:
                     parsed = parse_reply(reply)
                 except ValueError:
-                    parsed = parse_reply(reply, strict=False)
+                    # Say what the reply looked like: length and opening words, never a whole body.
+                    peek = " ".join(reply.split())[:80]
+                    raise ValueError(f"unparseable reply, {len(reply)} chars: {peek!r}") from None
             by_id = {i["id"]: i for i in items}
             resolved = []
             for moment in parsed.get("moments", []):
@@ -237,7 +245,8 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 - the site must build whatever the model does
             # Type and HTTP status only: an API error body can echo credentials back.
             status = getattr(exc, "code", None)
-            reason = f"{type(exc).__name__}" + (f" {status}" if status else "")
+            reason = (f"{type(exc).__name__}" + (f" {status}" if status else "")
+                      + (f": {str(exc)}" if str(exc) else ""))[:160]
             print(f"editor unavailable ({reason}); falling back to the rules")
             moments = rules_engine(items, now)
             moments["editorError"] = reason[:120]
