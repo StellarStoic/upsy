@@ -246,6 +246,13 @@ CSS = """
   .rows { border-right:1px solid var(--line); min-width:0; }
   .row { display:grid; grid-template-columns:70px minmax(0,1fr) 112px; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line); }
   .row:hover { background:var(--panel); }
+  .net-item { display:flex; width:100%; justify-content:space-between; gap:8px; align-items:baseline;
+    background:none; border:0; border-left:2px solid transparent; padding:5px 8px; cursor:pointer;
+    font:inherit; color:inherit; text-align:left; }
+  .net-item:hover { background:var(--panel); }
+  .net-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .net-item.is-on { background:var(--panel); border-left-color:var(--hot); color:var(--hot); font-weight:600; }
+  .net-all { margin:8px 0 0; font-size:.78rem; opacity:.7; }
   /* `.row` sets display:grid, which outranks the browser's own [hidden] { display:none } - so a
      filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
   .row[hidden], .row.is-hidden { display:none; }
@@ -361,6 +368,11 @@ def footer(items=None, sources=None) -> str:
 </footer>"""
 
 
+def src_key(name: str) -> str:
+    """A stable key for a source, used to line the sidebar buttons up with the rows."""
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+
+
 def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     tags = []
     if item["breaking"]:
@@ -377,7 +389,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     trace = " ".join(f"<i>{esc(t)}</i>" for t in (item.get("siTerms") or [])[:3])
     dek = f'<p class="dek">{esc(truncate(item["summary"], 190))}</p>' if item.get("summary") else ""
     meter = min(100.0, max(5.0, float(item["score"]) * 0.7))
-    return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
+    return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
   <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span></div>
   <div>
     <div class="src"><a class="who" href="/s/{esc(item['id'])}/">{esc(item['sourceName'])}</a><span>{age(item.get('published'), now)} ago</span>{''.join(tags)}</div>
@@ -401,14 +413,31 @@ FILTER_BAR = """<div class="bar">
 
 SIGNAL_JS = """<script>
 (function () {
-  const rows = Array.from(document.querySelectorAll('.row'));
+  // A live collection, not a snapshot: rows pulled in by "load more" answer to the same
+  // filters, and the counter counts them. There were two snapshots, so neither saw the other's rows.
+  const rows = document.getElementsByClassName('row');
   const count = document.getElementById('count');
-  const state = { breaking: false, upsy: false, image: false, q: '' };
+  const state = { breaking: false, upsy: false, image: false, q: '', sources: new Set() };
+  // One click shows that source alone, a second click drops it; with nothing
+  // selected every feed is shown, which is where the page starts.
+  for (const button of document.querySelectorAll('#net .net-item')) {
+    button.addEventListener('click', function () {
+      const key = button.dataset.src;
+      if (state.sources.has(key)) state.sources.delete(key); else state.sources.add(key);
+      const on = state.sources.has(key);
+      button.classList.toggle('is-on', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      apply();
+      // Deselecting shows every feed again, which means everything loaded, not just the first screen.
+      if (window.upsyLoadAll) window.upsyLoadAll().then(apply);
+    });
+  }
   function matches(row) {
     if (state.breaking && row.dataset.breaking !== '1') return false;
     if (state.upsy && row.dataset.upsy !== '1') return false;
     if (state.image && row.dataset.image !== '1') return false;
     if (state.q && !row.dataset.title.includes(state.q)) return false;
+    if (state.sources.size && !state.sources.has(row.dataset.src)) return false;
     return true;
   }
   function apply() {
@@ -473,9 +502,18 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     counts = data["counts"]
     rows = "\n".join(chip_row(i, now, set()) for i in items[:INDEX_ROWS])
     anomalies = render_anomalies(moments, items, now)
+    # Every source, not a top slice: the panel is the filter as well as the list. The number beside a
+    # source is what it contributed to *this* build, not the lifetime total the health record keeps -
+    # "1287" next to OpenAI when the page holds four hundred stories reads as a bug.
+    from collections import Counter
+
+    per_source = Counter(i.get("sourceName", "") for i in items)
     net_rows = "\n".join(
-        f'<div><a href="/sources.html">{esc(h["name"])}</a><span class="num">{h["items"]}</span></div>'
-        for h in sorted(meta["health"], key=lambda h: -h["items"])[:14]
+        f'<button type="button" class="net-item" data-src="{src_key(h["name"])}" aria-pressed="false"'
+        f' title="{per_source.get(h["name"], 0)} in this build">'
+        f'<span class="nm">{esc(h["name"])}</span>'
+        f'<span class="num">{per_source.get(h["name"], 0)}</span></button>'
+        for h in sorted(meta["health"], key=lambda h: (-per_source.get(h["name"], 0), h["name"].lower()))
     )
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
@@ -502,7 +540,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     </section>
     <section>
       <h3>source network</h3>
-      <div class="net">{net_rows}</div>
+      <div class="net" id="net">{net_rows}</div>
+      <p class="net-all"><a href="/sources.html">all {len(meta["health"])} sources &amp; the method</a></p>
     </section>
     <section>
       <h3>what this is</h3>
@@ -514,7 +553,9 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
 {SIGNAL_JS}
 <script>
 (function () {{
-  const rows = Array.from(document.querySelectorAll('.row'));
+  // A live collection, not a snapshot: rows pulled in by "load more" answer to the same
+  // filters, and the counter counts them. There were two snapshots, so neither saw the other's rows.
+  const rows = document.getElementsByClassName('row');
   const button = document.getElementById('load-more');
   let loaded = {INDEX_ROWS};
   const state = {{ breaking: false, upsy: false, image: false, q: '' }};
@@ -533,6 +574,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     article.dataset.breaking = item.breaking ? '1' : '0';
     article.dataset.image = item.image ? '1' : '0';
     article.dataset.title = (item.title + ' ' + item.sourceName).toLowerCase();
+    article.dataset.src = item.src || '';
     article.innerHTML =
       '<div class="energy"><span class="n">' + Math.round(item.score) + '</span>' +
       '<span class="lbl">energy</span><span class="meter"><i style="width:' + meter + '%"></i></span></div>' +
@@ -550,11 +592,24 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     const batch = payload.items.slice(loaded, loaded + 120);
     for (const item of batch) stream.insertBefore(rowFor(item), stream.querySelector('.more'));
     loaded += batch.length;
-    rows.push(...Array.from(document.querySelectorAll('.row')).slice(-batch.length));
+    // the row list is live, so nothing needs appending here
     button.textContent = loaded >= payload.items.length ? 'that is every story tonight' : 'load more';
     button.disabled = loaded >= payload.items.length;
     button.dispatchEvent(new Event('upsy:applied'));
   }});
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // A source's stories are mostly below the first screen, so choosing one has to fetch them or the
+  // click lands on "0 of 120 shown" and reads as broken. Bounded: twenty batches, five seconds each.
+  window.upsyLoadAll = async function () {{
+    for (let i = 0; i < 20; i++) {{
+      let waits = 0;
+      while (button.disabled && waits++ < 20) await wait(250);
+      if (waits >= 20) break;
+      if (button.textContent.indexOf('every story') >= 0) break;
+      button.click();
+      await wait(250);
+    }}
+  }};
 }})();
 </script>
 </body></html>
@@ -791,6 +846,7 @@ def main() -> int:
                     "items": [{"id": i["id"], "title": esc(i["title"]), "url": esc(i["url"]),
                                "sourceName": esc(i["sourceName"]), "summary": esc(truncate(i["summary"], 200)),
                                "image": esc(i.get("imageLocal") or i["image"]), "score": i["score"], "breaking": i["breaking"],
+                               "src": src_key(i["sourceName"]),
                                "upsy": i["upsy"], "age": age(i["published"], now)} for i in items]},
                    ensure_ascii=False), encoding="utf-8")
     (SITE / "data" / "meta.json").write_text(

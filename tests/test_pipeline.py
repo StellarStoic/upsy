@@ -383,6 +383,17 @@ class SiteBuild(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["link"], "https://example.test/2026/10/a-story")
 
+    def test_every_source_is_a_filter_button_and_every_row_carries_its_source(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        listed = build_site.re.findall(r'class="net-item" data-src="([^"]+)"', page)
+        self.assertTrue(listed, "the sidebar must list the sources it has, not a top slice")
+        rows = build_site.re.findall(r'class="row[^"]*"[^>]*data-src="([^"]+)"', page)
+        self.assertTrue(rows, "rows must carry the source they came from")
+        for key in set(rows):
+            self.assertIn(key, listed, f"row source {key!r} has no sidebar button")
+        self.assertIn("state.sources.size && !state.sources.has(row.dataset.src)", page)
+        self.assertIn("article.dataset.src = item.src", page)
+
     def test_nothing_renders_as_python_none(self):
         for path in [p for p in self.site.rglob("*.html")]:
             text = path.read_text(encoding="utf-8")
