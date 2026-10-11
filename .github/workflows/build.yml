@@ -1,0 +1,75 @@
+name: build and deploy
+
+on:
+  schedule:
+    # Every ten minutes. GitHub queues scheduled work under load, so treat this as "roughly ten
+    # minutes" rather than a promise - the page shows the age of the build it is looking at.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only changes that can alter the output. A push that only touches data/ must not loop.
+    paths:
+      - "sources.json"
+      - "tools/**"
+      - ".github/workflows/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  models: read
+
+concurrency:
+  group: upsy-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # The fetcher's dedup state, so a story stays "already seen" between runs without committing
+      # a few hundred kilobytes of JSON every ten minutes.
+      - name: restore the fetcher state
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/state.json
+            data/images
+          key: upsy-state-${{ github.run_id }}
+          restore-keys: |
+            upsy-state-
+
+      - name: read the feeds
+        run: python3 tools/fetch.py
+
+      # Writes the upsy moments with the workflow's own token. A refusal, a rate limit or a broken
+      # reply falls back to the rules, so this step must never be able to stop the site.
+      - name: write the upsy moments
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/moments.py
+
+      - name: build the site
+        run: python3 tools/build_site.py
+
+      - name: upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

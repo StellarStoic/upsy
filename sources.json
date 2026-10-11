@@ -1,0 +1,241 @@
+{
+  "version": 1,
+  "updated": "2026-10-11",
+  "notes": "Every source here was fetched and parsed before being listed: item count and newest item are from a real probe. 'tier' is the ranking weight (1 = first-party lab or primary, 2 = press, 3 = community/aggregator). Sources that failed their probe are kept with enabled:false and the reason, so the record of what was tried survives.",
+  "defaults": {
+    "enabled": true,
+    "tier": 2,
+    "category": "news",
+    "lang": "en",
+    "fetchArticle": true
+  },
+  "sources": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "url": "https://openai.com/news/rss.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://openai.com/news/"
+    },
+    {
+      "id": "deepmind",
+      "name": "Google DeepMind",
+      "url": "https://deepmind.google/blog/rss.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://deepmind.google/discover/blog/"
+    },
+    {
+      "id": "google-ai",
+      "name": "Google AI blog",
+      "url": "https://blog.google/technology/ai/rss/",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://blog.google/technology/ai/"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://huggingface.co/blog"
+    },
+    {
+      "id": "aws-ml",
+      "name": "AWS Machine Learning",
+      "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://aws.amazon.com/blogs/machine-learning/"
+    },
+    {
+      "id": "mit-news-ai",
+      "name": "MIT News AI",
+      "url": "https://news.mit.edu/rss/topic/artificial-intelligence2",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://news.mit.edu/topic/artificial-intelligence2"
+    },
+    {
+      "id": "ieee-ai",
+      "name": "IEEE Spectrum AI",
+      "url": "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://spectrum.ieee.org/artificial-intelligence"
+    },
+    {
+      "id": "mit-tech-review-ai",
+      "name": "MIT Technology Review AI",
+      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.technologyreview.com/topic/artificial-intelligence/"
+    },
+    {
+      "id": "techcrunch-ai",
+      "name": "TechCrunch AI",
+      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://techcrunch.com/category/artificial-intelligence/"
+    },
+    {
+      "id": "verge-ai",
+      "name": "The Verge AI",
+      "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.theverge.com/ai-artificial-intelligence"
+    },
+    {
+      "id": "ars-technica",
+      "name": "Ars Technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://arstechnica.com/ai/"
+    },
+    {
+      "id": "wired-ai",
+      "name": "Wired AI",
+      "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.wired.com/tag/artificial-intelligence/"
+    },
+    {
+      "id": "the-decoder",
+      "name": "The Decoder",
+      "url": "https://the-decoder.com/feed/",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://the-decoder.com/"
+    },
+    {
+      "id": "aibusiness",
+      "name": "AI Business",
+      "url": "https://aibusiness.com/rss.xml",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://aibusiness.com/"
+    },
+    {
+      "id": "marktechpost",
+      "name": "MarkTechPost",
+      "url": "https://www.marktechpost.com/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://www.marktechpost.com/"
+    },
+    {
+      "id": "unite-ai",
+      "name": "Unite.AI",
+      "url": "https://www.unite.ai/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://www.unite.ai/"
+    },
+    {
+      "id": "simon-willison",
+      "name": "Simon Willison",
+      "url": "https://simonwillison.net/atom/everything/",
+      "category": "commentary",
+      "tier": 2,
+      "homepage": "https://simonwillison.net/"
+    },
+    {
+      "id": "tldr-ai",
+      "name": "TLDR AI",
+      "url": "https://tldr.tech/api/rss/ai",
+      "category": "aggregator",
+      "tier": 3,
+      "homepage": "https://tldr.tech/ai",
+      "fetchArticle": false
+    },
+    {
+      "id": "google-news-agi",
+      "name": "Google News: AGI & superintelligence",
+      "url": "https://news.google.com/rss/search?q=%22artificial+general+intelligence%22+OR+superintelligence&hl=en-US&gl=US&ceid=US:en",
+      "category": "aggregator",
+      "tier": 3,
+      "homepage": "https://news.google.com/",
+      "fetchArticle": false
+    },
+    {
+      "id": "hn-frontier",
+      "name": "Hacker News: frontier AI",
+      "url": "https://hnrss.org/newest?q=AGI+OR+superintelligence+OR+%22frontier+model%22",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://news.ycombinator.com/",
+      "fetchArticle": false
+    },
+    {
+      "id": "singularity",
+      "name": "r/singularity",
+      "url": "https://www.reddit.com/r/singularity/.rss",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://www.reddit.com/r/singularity/",
+      "fetchArticle": false
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "url": "https://www.anthropic.com/news/rss.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://www.anthropic.com/news",
+      "enabled": false,
+      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
+      "note": "feed.missing: https://www.anthropic.com/news/rss.xml returned 404 at probe time; no replacement feed found yet"
+    },
+    {
+      "id": "meta-ai",
+      "name": "Meta AI",
+      "url": "https://ai.meta.com/blog/rss/",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://ai.meta.com/blog/",
+      "enabled": false,
+      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
+      "note": "feed.missing: https://ai.meta.com/blog/rss/ returned 404 at probe time; find their current feed before enabling"
+    },
+    {
+      "id": "microsoft-ai",
+      "name": "Microsoft AI blog",
+      "url": "https://blogs.microsoft.com/ai/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://blogs.microsoft.com/ai/",
+      "enabled": false,
+      "probe": "HTTP 410 Gone on 2026-10-11 - feed retired",
+      "note": "feed.retired: returned 410 Gone; Microsoft moved its AI blog, find the new feed before enabling"
+    },
+    {
+      "id": "venturebeat-ai",
+      "name": "VentureBeat AI",
+      "url": "https://venturebeat.com/category/ai/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://venturebeat.com/category/ai/",
+      "enabled": false,
+      "probe": "HTTP 429 on 2026-10-11 - rate limited; retry with a browser-ish UA before enabling",
+      "note": "rate limited (429) at probe time; retry with a slower schedule before enabling"
+    },
+    {
+      "id": "arxiv-cs-ai",
+      "name": "arXiv cs.AI",
+      "url": "https://rss.arxiv.org/rss/cs.AI",
+      "category": "paper",
+      "tier": 3,
+      "homepage": "https://arxiv.org/list/cs.AI/recent",
+      "enabled": false,
+      "probe": "RDF/RSS 1.0 - parses but yielded no items on 2026-10-11; the reader needs RDF handling",
+      "note": "probe failed; see the fetch log"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+_site/
+data/
+sketches/
+data/state.json
+__pycache__/
+*.pyc
