@@ -350,6 +350,39 @@ class SiteBuild(unittest.TestCase):
             self.assertEqual(items[2]["imageLocal"], "")
             self.assertTrue((site / "img" / shot.name).exists())
 
+    def test_an_atom_id_that_is_only_a_front_door_is_refused(self):
+        """The Verge publishes <id>?p=NNNN</id> alongside the real link; the href must win."""
+        feed = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+          <title>AI | The Verge</title>
+          <entry>
+            <title>A story with a real address</title>
+            <id>https://www.theverge.com/?p=1009406</id>
+            <link rel="alternate" type="text/html" href="https://www.theverge.com/ai/1009406/a-story"/>
+            <updated>2026-10-11T10:00:00Z</updated>
+          </entry>
+        </feed>"""
+        items = fetcher.parse_feed(feed)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["link"], "https://www.theverge.com/ai/1009406/a-story")
+
+    def test_a_story_whose_only_link_is_the_homepage_is_dropped(self):
+        feed = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+          <title>x</title>
+          <entry><title>Nothing to click</title>
+            <id>https://www.theverge.com/?p=1009406</id>
+            <updated>2026-10-11T10:00:00Z</updated></entry>
+        </feed>"""
+        self.assertEqual(fetcher.parse_feed(feed), [])
+
+    def test_a_plain_rss_link_still_wins(self):
+        feed = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>x</title>
+          <item><title>RSS style</title><link>https://example.test/2026/10/a-story</link>
+          <pubDate>Sat, 11 Oct 2026 10:00:00 +0000</pubDate></item>
+        </channel></rss>"""
+        items = fetcher.parse_feed(feed)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["link"], "https://example.test/2026/10/a-story")
+
     def test_nothing_renders_as_python_none(self):
         for path in [p for p in self.site.rglob("*.html")]:
             text = path.read_text(encoding="utf-8")

@@ -313,10 +313,49 @@ def resolve_link(node: ET.Element, link: str) -> str:
     which is not a link and must never be published as one. Anything that is not http(s) is refused,
     and an item with no link at all is dropped by the collector rather than linked to nowhere.
     """
-    if link.startswith(("http://", "https://")):
+    if link.startswith(("http://", "https://")) and is_article_url(link):
         return link
     href = attr_anywhere(node, ("link",), "href")
-    return href if href and href.startswith(("http://", "https://")) else ""
+    if href and href.startswith(("http://", "https://")) and is_article_url(href):
+        return href
+    return ""
+
+
+def atom_href(node: ET.Element) -> str:
+    """Atom's real address: <link rel="alternate" href=...>, otherwise any <link href=...>."""
+    fallback = ""
+    for child in node:
+        if local(child.tag) != "link":
+            continue
+        href = (child.get("href") or "").strip()
+        if not href.startswith(("http://", "https://")):
+            continue
+        if (child.get("rel") or "alternate").lower() == "alternate":
+            return href
+        fallback = fallback or href
+    return fallback
+
+
+def is_article_url(url: str) -> bool:
+    """A link to a page, not to the front door of a site.
+
+    The Verge's Atom entries carry <id>https://www.theverge.com/?p=1009406</id> - an http URL that
+    lands on their homepage - while the article sits in <link rel="alternate" href=...>. A path is
+    what makes a URL a story, so a bare host is refused and the next candidate is used instead.
+    """
+    parts = urllib.parse.urlparse(url)
+    return bool(parts.netloc) and parts.path.strip("/") != ""
+
+
+def reusable(items: list[dict]) -> list[dict]:
+    """Filter links out of the kept-items cache on the way back in.
+
+    A source that answers 304, rate-limits us or fails keeps the items it gave us last time, which is
+    how the stream avoids emptying out. But those items were accepted by whatever rules existed when
+    they were parsed, so they are re-checked here: The Verge's old "?p=NNNN" ids, which resolve to
+    their homepage, must not survive a fix to the link rules.
+    """
+    return [item for item in items if is_article_url(item.get("link") or "")]
 
 
 def parse_feed(body: bytes) -> list[dict]:
@@ -329,12 +368,22 @@ def parse_feed(body: bytes) -> list[dict]:
     items: list[dict] = []
     for node in nodes:
         title = strip_html(first_text(node, ("title",)))
-        link = first_text(node, ("link", "origlink", "guid", "id"))
-        if not link:
-            link = attr_anywhere(node, ("link",), "href")
+        # Ordered by trust: Atom's href, then the RSS text link, then guid/id - and the first one
+        # that is both http and an actual page wins. An id that only points at the site root (The
+        # Verge publishes ?p=NNNN ids) is skipped instead of being published as the story's address.
+        candidates = (atom_href(node),
+                      first_text(node, ("link", "origlink", "guid", "id")),
+                      attr_anywhere(node, ("link",), "href"))
+        link = ""
+        for candidate in candidates:
+            if not candidate or not candidate.startswith(("http://", "https://")):
+                continue
+            cleaned = clean_url(candidate)
+            if is_article_url(cleaned):
+                link = cleaned
+                break
         if not title or not link:
             continue
-        link = clean_url(link)
         raw_summary = first_text(node, ("encoded", "summary", "description", "content"))
         full_text = first_text(node, ("encoded",))
         items.append({
@@ -454,19 +503,19 @@ def run(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001
             # A source that fails now still has the items it gave us last time, and losing them on a
             # transient 429 or a Cloudflare hiccup is how a stream quietly empties out.
-            kept = _revive(item_cache.get(source["url"], []))
+            kept = reusable(_revive(item_cache.get(source["url"], [])))
             if kept:
                 return (source, kept, f"{type(exc).__name__}: {exc}"[:120])
             return (source, [], f"{type(exc).__name__}: {exc}"[:160])
         if status == 304:
             # A feed that has not changed still has items, and dropping them is how a site loses
             # half its content on the second run of the day. Reuse what this source last gave us.
-            revived = _revive(item_cache.get(source["url"], []))
+            revived = reusable(_revive(item_cache.get(source["url"], [])))
             return (source, revived, f"not modified ({len(revived)} kept)")
         try:
             items = parse_feed(body)
         except ET.ParseError as exc:
-            kept = _revive(item_cache.get(source["url"], []))
+            kept = reusable(_revive(item_cache.get(source["url"], [])))
             if kept:
                 return (source, kept, f"not feed XML, kept {len(kept)}")
             return (source, [], f"not feed XML ({exc})")
