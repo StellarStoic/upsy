@@ -123,6 +123,13 @@ def cache_images(items: list[dict], limit: int = 200) -> int:
     return cached
 
 
+def editor_note(moments: dict) -> str:
+    """Who wrote the rail, readable from the published page without any log access."""
+    engine = moments.get("engine") or "rules"
+    error = moments.get("editorError")
+    return f"{engine}" + (f" (unavailable: {error})" if error else "")
+
+
 def esc(text: str | None) -> str:
     return html.escape(text or "", quote=True)
 
@@ -268,6 +275,7 @@ BASE_HEAD = """<!doctype html>
 {og_image}<meta name="twitter:card" content="{twitter_card}">
 <link rel="alternate" type="application/atom+xml" title="upsy.si" href="/feed.xml">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<meta name="upsy-editor" content="{editor}">
 <style>{css}</style>
 </head>
 <body>
@@ -413,6 +421,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
         for h in sorted(meta["health"], key=lambda h: -h["items"])[:14]
     )
     head = BASE_HEAD.format(
+        editor=esc(editor_note(moments)),
         title="upsy.si \u2014 watching superintelligence happen",
         description=truncate("Live wire on superintelligence: breaking news and upsy moments in AI, "
                              f"from {counts['sources']} sources and {counts['items']} stories.", 200),
@@ -545,11 +554,12 @@ def text_to_html(text: str) -> str:
     return body
 
 
-def build_story(item: dict, related: list[dict], now: datetime) -> str:
+def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -> str:
     # The social card points at our own copy, so a preview never depends on the publisher's CDN.
     card = item.get("imageLocal") or item.get("image")
     og_image = f'<meta property="og:image" content="{SITE_URL}{esc(card)}">\n' if card else ""
     head = BASE_HEAD.format(
+        editor=esc(editor_note(moments)),
         title=f"{truncate(item['title'], 90)} | upsy.si",
         description=truncate(item["summary"] or item["title"], 200),
         canonical=f"{SITE_URL}/s/{item['id']}/", og_type="article", site_name=SITE_NAME,
@@ -601,7 +611,7 @@ def build_story(item: dict, related: list[dict], now: datetime) -> str:
 """
 
 
-def build_sources(meta: dict, sources: dict, now: datetime) -> str:
+def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> str:
     rows = []
     by_id = {s["id"]: s for s in sources["sources"]}
     for health in sorted(meta["health"], key=lambda h: (h["status"][:2] != "ok", -h["items"])):
@@ -618,6 +628,7 @@ def build_sources(meta: dict, sources: dict, now: datetime) -> str:
             f'{f"<a href=\"{esc(source.get('site',''))}\" target=\"_blank\" rel=\"noopener nofollow\">site</a>" if source.get("site") else ""}</td></tr>'
         )
     head = BASE_HEAD.format(
+        editor=esc(editor_note(moments)),
         title="sources | upsy.si", description="Every feed upsy.si reads, with its health and freshness.",
         canonical=f"{SITE_URL}/sources.html", og_type="website", site_name=SITE_NAME,
         og_title="sources | upsy.si", og_description="Every feed upsy.si reads, with health and freshness.",
@@ -712,7 +723,7 @@ def main() -> int:
             related += [i for i in items if i["id"] != item["id"] and i not in related][:3 - len(related)]
         folder = SITE / "s" / item["id"]
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / "index.html").write_text(build_story(item, related, now), encoding="utf-8")
+        (folder / "index.html").write_text(build_story(item, related, now, moments), encoding="utf-8")
     # The stream page loads older stories and checks for new builds from these two files.
     (SITE / "data" / "news.json").write_text(
         json.dumps({"generated": data["generated"], "counts": data["counts"],
@@ -723,7 +734,7 @@ def main() -> int:
                    ensure_ascii=False), encoding="utf-8")
     (SITE / "data" / "meta.json").write_text(
         json.dumps({"generated": data["generated"], "counts": data["counts"]}, ensure_ascii=False), encoding="utf-8")
-    (SITE / "sources.html").write_text(build_sources(meta, sources, now), encoding="utf-8")
+    (SITE / "sources.html").write_text(build_sources(meta, sources, now, moments), encoding="utf-8")
     (SITE / "feed.xml").write_text(build_feed(items, now), encoding="utf-8")
     (SITE / "sitemap.xml").write_text(build_sitemap(items, now), encoding="utf-8")
     (SITE / "robots.txt").write_text(

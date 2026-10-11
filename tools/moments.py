@@ -141,8 +141,9 @@ def rules_engine(items: list[dict], now: datetime) -> dict:
         "engine": "rules",
         "moments": [
             {"id": i["id"], "title": i["title"], "url": i["url"], "sourceName": i["sourceName"],
-             "image": i.get("image", ""), "why": i.get("summary") or "Flagged by the stream - worth a look.",
-             "published": i.get("published", "")}
+             "image": i.get("image", ""), "published": i.get("published", ""),
+             "why": (f"flagged for {', '.join((i.get('upsyTerms') or [])[:3])} - " if i.get("upsyTerms") else "")
+                    + (i.get("summary") or "Nominated by the stream as an upsy moment.")}
             for i in picked[:MOMENTS]
         ],
     }
@@ -194,8 +195,12 @@ def main() -> int:
                        "moments": resolved}
             print(f"editor ({label}) returned {len(resolved)} moment(s)")
         except Exception as exc:  # noqa: BLE001 - the site must build whatever the model does
-            print(f"editor unavailable ({type(exc).__name__}: {exc}); falling back to the rules")
+            # Type and HTTP status only: an API error body can echo credentials back.
+            status = getattr(exc, "code", None)
+            reason = f"{type(exc).__name__}" + (f" {status}" if status else "")
+            print(f"editor unavailable ({reason}); falling back to the rules")
             moments = rules_engine(items, now)
+            moments["editorError"] = reason[:120]
     else:
         print("no credential: nothing to write with, so the rules nominate instead")
         moments = rules_engine(items, now)
