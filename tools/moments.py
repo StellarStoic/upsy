@@ -30,6 +30,9 @@ from datetime import datetime, timedelta, timezone
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 DEFAULT_BASE = "https://models.github.ai/inference"
+# The newer host answers 200 text/plain "OK" to a token it will not honour; the older Azure-fronted
+# host is the fallback, so the rail has two chances before it drops to the rules.
+ALT_BASE = "https://models.inference.ai.azure.com"
 DEFAULT_MODEL = "openai/gpt-4o-mini"
 CANDIDATES = 60
 MOMENTS = 5
@@ -97,6 +100,17 @@ def build_prompt(items: list[dict]) -> str:
 
 
 def call_model(token: str, base: str, model: str, prompt: str) -> str:
+    """Ask one host; if it answers with something unusable, ask the other before giving up."""
+    try:
+        return _post(token, base, model, prompt)
+    except ValueError as exc:
+        if base == ALT_BASE or "body=" not in str(exc):
+            raise
+        print(f"editor: {base} returned an unusable body ({exc}); trying {ALT_BASE}")
+        return _post(token, ALT_BASE, model, prompt)
+
+
+def _post(token: str, base: str, model: str, prompt: str) -> str:
     payload = json.dumps({
         "model": model,
         "messages": [
