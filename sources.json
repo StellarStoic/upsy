@@ -236,6 +236,66 @@
       "enabled": false,
       "probe": "RDF/RSS 1.0 - parses but yielded no items on 2026-10-11; the reader needs RDF handling",
       "note": "probe failed; see the fetch log"
+    },
+    {
+      "id": "alignment-forum",
+      "name": "Alignment Forum",
+      "url": "https://www.alignmentforum.org/feed.xml",
+      "site": "https://www.alignmentforum.org/",
+      "category": "community",
+      "tier": 1,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "smol-ai-news",
+      "name": "AI News (smol.ai)",
+      "url": "https://news.smol.ai/rss.xml",
+      "site": "https://news.smol.ai/",
+      "category": "press",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "import-ai",
+      "name": "Import AI",
+      "url": "https://jack-clark.net/feed/",
+      "site": "https://jack-clark.net/",
+      "category": "commentary",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "lesswrong",
+      "name": "LessWrong",
+      "url": "https://www.lesswrong.com/feed.xml",
+      "site": "https://www.lesswrong.com/",
+      "category": "community",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "bair",
+      "name": "BAIR Blog",
+      "url": "https://bair.berkeley.edu/blog/feed.xml",
+      "site": "https://bair.berkeley.edu/blog/",
+      "category": "research",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "microsoft-research",
+      "name": "Microsoft Research",
+      "url": "https://www.microsoft.com/en-us/research/feed/",
+      "site": "https://www.microsoft.com/en-us/research/blog/",
+      "category": "lab",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
     }
   ]
 }
