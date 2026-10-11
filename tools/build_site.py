@@ -452,7 +452,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     </section>
     <section>
       <h3>what this is</h3>
-      <p class="brief">{esc(truncate(moments.get('brief') or 'An automated wire: feeds are read every ten minutes, ranked by freshness, source and how squarely a story sits on superintelligence, and the anomalies are written up by a model.', 260))}</p>
+      <p class="brief">{esc(truncate(moments.get('brief') or 'An automated wire: feeds are read every ten minutes, ranked by freshness, source and how squarely a story sits on superintelligence, and the notable ones are picked out for the rail.', 260))}</p>
     </section>
   </aside>
 </main>
