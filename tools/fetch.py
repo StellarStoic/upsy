@@ -553,7 +553,7 @@ def run(args: argparse.Namespace) -> int:
                 if extra.get("image_alt"):
                     item["imageAlt"] = extra["image_alt"]
             if extra.get("description") and len(item["summary"]) < 220:
-                item["summary"] = extra["description"]
+                item["summary"] = clean_summary(extra["description"])
             if extra.get("canonical") and extra["canonical"] != item["url"]:
                 item["url"] = extra["canonical"]
                 item["id"] = hashlib.sha1(item["url"].encode("utf-8")).hexdigest()[:16]
@@ -571,7 +571,10 @@ def run(args: argparse.Namespace) -> int:
             if cached_extra.get("image_alt"):
                 item["imageAlt"] = cached_extra["image_alt"]
         if cached_extra.get("description") and len(item["summary"]) < 220:
-            item["summary"] = cached_extra["description"]
+            # Through the same filter as a feed summary: a page's meta description is often the
+            # publisher describing itself, which is how "Founded in 2011, we offer our audience..."
+            # ended up as the second line of the top story.
+            item["summary"] = clean_summary(cached_extra["description"])
 
     # Score.
     for item in items:
