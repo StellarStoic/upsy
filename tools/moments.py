@@ -104,7 +104,8 @@ def call_model(token: str, base: str, model: str, prompt: str) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.4,
-        "max_tokens": 900,
+        "response_format": {"type": "json_object"},
+        "max_tokens": 1600,
     }).encode()
     request = urllib.request.Request(
         base.rstrip("/") + "/chat/completions", data=payload,
@@ -116,14 +117,35 @@ def call_model(token: str, base: str, model: str, prompt: str) -> str:
     return body["choices"][0]["message"]["content"]
 
 
-def parse_reply(reply: str) -> dict:
-    """Pull the JSON out of a reply that may be wrapped in prose or code fences."""
-    text = reply.strip()
+def parse_reply(reply: str, strict: bool = True) -> dict:
+    """Pull the answer out of a reply that may be wrapped in prose, code fences, or cut short.
+
+    A small model asked for JSON sometimes returns it inside a sentence, and sometimes runs out of
+    room mid-object. Losing the whole rail to either is the wrong trade, so after the strict attempt
+    the pieces are recovered by hand: the brief if it is there, and every complete moment object.
+    """
+    text = (reply or "").strip()
     text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.M).strip()
     start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    if strict:
         raise ValueError("no JSON object in the reply")
-    return json.loads(text[start:end + 1])
+
+    brief_match = re.search(r'"brief"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    recovered = []
+    for match in re.finditer(r'\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"why"\s*:\s*"((?:[^"\\]|\\.)*)"', text):
+        try:
+            recovered.append({"id": match.group(1), "why": json.loads(f'"{match.group(2)}"')})
+        except Exception:
+            recovered.append({"id": match.group(1), "why": match.group(2)})
+    if not recovered and not brief_match:
+        raise ValueError("no JSON object in the reply")
+    print(f"   reply was not valid JSON; recovered {len(recovered)} moment(s) by hand")
+    return {"brief": brief_match.group(1) if brief_match else "", "moments": recovered}
 
 
 def rules_engine(items: list[dict], now: datetime) -> dict:
@@ -176,8 +198,18 @@ def main() -> int:
     moments: dict
     if token:
         try:
-            reply = call_model(token, base, model, build_prompt(candidates(items)))
-            parsed = parse_reply(reply)
+            prompt = build_prompt(candidates(items))
+            reply = call_model(token, base, model, prompt)
+            try:
+                parsed = parse_reply(reply)
+            except ValueError:
+                # One more attempt, with the format requirement stated plainer than the first time.
+                reply = call_model(token, base, model,
+                                   prompt + "\n\nReply with the JSON object only. No sentences around it.")
+                try:
+                    parsed = parse_reply(reply)
+                except ValueError:
+                    parsed = parse_reply(reply, strict=False)
             by_id = {i["id"]: i for i in items}
             resolved = []
             for moment in parsed.get("moments", []):

@@ -206,6 +206,17 @@ class EditorFallback(unittest.TestCase):
         with self.assertRaises(ValueError):
             editor.parse_reply("I would rather not.")
 
+    def test_a_truncated_reply_still_yields_its_moments(self):
+        # What a small model returns when it runs out of room mid-object.
+        cut = '{"brief": "Quiet day.", "moments": [{"id": "a1", "why": "It escaped."}, {"id": "b2", "wh'
+        parsed = editor.parse_reply(cut, strict=False)
+        self.assertEqual(parsed["brief"], "Quiet day.")
+        self.assertEqual([m["id"] for m in parsed["moments"]], ["a1"])
+
+    def test_a_reply_inside_a_sentence_is_still_read(self):
+        parsed = editor.parse_reply('Sure! {"brief": "B.", "moments": []}')
+        self.assertEqual(parsed["brief"], "B.")
+
     def test_rules_engine_never_invents_a_story(self):
         items = [{"id": "a", "title": "T", "url": "https://x.test/1", "sourceName": "X", "image": "",
                   "summary": "s", "published": "", "upsy": True, "promo": False, "question": False,
