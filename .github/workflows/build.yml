@@ -52,7 +52,12 @@ jobs:
       - name: write the upsy moments
         continue-on-error: true
         env:
+          # The workflow's own token needs `models: read` to be accepted by GitHub Models. If you add
+          # a key of your own as the repository secret UPSY_LLM_API_KEY, it is used instead - and if
+          # neither works, moments.py falls back to the ranked candidates and the site still builds.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSY_LLM_API_KEY: ${{ secrets.UPSY_LLM_API_KEY }}
+          UPSY_LLM_MODEL: ${{ vars.UPSY_LLM_MODEL }}
         run: python3 tools/moments.py
 
       - name: build the site

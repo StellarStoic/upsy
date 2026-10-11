@@ -86,15 +86,25 @@ def cache_images(items: list[dict], limit: int = 200) -> int:
         url = item["image"]
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:20]
         stored = next((p for p in IMAGE_CACHE.glob(digest + ".*")), None)
+        if stored is not None and not image_suffix(stored.read_bytes()[:16]):
+            # A cache written before the validation existed, or a truncated download: drop it and
+            # fetch again rather than serve a broken picture for as long as the cache survives.
+            stored.unlink(missing_ok=True)
+            stored = None
         if stored is None:
             try:
                 request = urllib.request.Request(url, headers={
                     "User-Agent": "upsy.si/1.0 (+https://upsy.si/)", "Referer": "https://upsy.si/"})
                 with urllib.request.urlopen(request, timeout=20) as response:
                     data = response.read(MAX_IMAGE_BYTES + 1)
+                expected = response.headers.get("Content-Length")
             except Exception:
                 return ""
             if not data or len(data) > MAX_IMAGE_BYTES:
+                return ""
+            # A truncated download starts with the right magic bytes and still renders as a broken
+            # image, so a declared length that does not match is a failed download, not a picture.
+            if expected and expected.isdigit() and int(expected) != len(data):
                 return ""
             suffix = image_suffix(data)
             if not suffix:

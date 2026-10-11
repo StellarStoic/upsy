@@ -47,7 +47,7 @@ def credentials() -> tuple[str, str, str, str]:
     """(token, base_url, model, label) - empty token means there is no editor tonight."""
     base = os.environ.get("UPSY_LLM_BASE_URL") or DEFAULT_BASE
     model = os.environ.get("UPSY_LLM_MODEL") or DEFAULT_MODEL
-    if os.environ.get("UPSY_LLM_API_KEY"):
+    if (os.environ.get("UPSY_LLM_API_KEY") or "").strip():
         return os.environ["UPSY_LLM_API_KEY"], base, model, f"{model} via key"
     if os.environ.get("GITHUB_TOKEN"):
         return os.environ["GITHUB_TOKEN"], base, model, f"{model} via workflow token"
