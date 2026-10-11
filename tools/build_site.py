@@ -123,6 +123,37 @@ def cache_images(items: list[dict], limit: int = 200) -> int:
     return cached
 
 
+def attach_shots(items: list[dict], limit: int, site: pathlib.Path, shots: pathlib.Path) -> int:
+    """Give a story whose feed carried no picture the screenshot of its own page, if one was taken.
+
+    tools/screenshots.py names every shot after a digest of the story url, so nothing has to be kept
+    in sync between the two scripts: a shot that exists is used, and a story that already has a
+    picture is left alone. Anything that is not really a picture - a challenge page saved under a
+    .png name - is refused by the same magic-byte check the downloads go through.
+    """
+    import hashlib
+    import shutil
+
+    if not shots.exists():
+        return 0
+    (site / "img").mkdir(exist_ok=True)
+    attached = 0
+    for item in items[:limit]:
+        if item.get("imageLocal") or (item.get("image") or "").startswith("http"):
+            continue
+        url = item.get("url") or ""
+        if not url.startswith("http"):
+            continue
+        stem = hashlib.sha1(url.encode("utf-8")).hexdigest()[:20]
+        found = next(iter(shots.glob(stem + ".*")), None)
+        if found is None or not image_suffix(found.read_bytes()[:16]):
+            continue
+        shutil.copy2(found, site / "img" / found.name)
+        item["imageLocal"] = f"/img/{found.name}"
+        attached += 1
+    return attached
+
+
 def editor_note(moments: dict) -> str:
     """Who wrote the rail, readable from the published page without any log access."""
     engine = moments.get("engine") or "rules"
@@ -718,6 +749,7 @@ def main() -> int:
 
     SITE.mkdir(exist_ok=True)
     cached = cache_images(items)
+    shot_pictures = attach_shots(items, 200, SITE, IMAGE_CACHE.parent / "shots")
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
@@ -748,7 +780,7 @@ def main() -> int:
     (SITE / "icon.svg").write_text(ICON, encoding="utf-8")
     pages = len(list((SITE / "s").iterdir()))
     print(f"built _site/: index.html ({min(len(items), INDEX_ROWS)} rows), {pages} story pages, "
-          f"feed.xml, sitemap.xml, sources.html, {cached} cached image(s)")
+          f"feed.xml, sitemap.xml, sources.html, {cached} cached image(s), {shot_pictures} screenshot(s)")
     return 0
 
 

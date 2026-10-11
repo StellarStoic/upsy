@@ -4,3 +4,5 @@ sketches/
 data/state.json
 __pycache__/
 *.pyc
+data/shots/
+data/shots.json
