@@ -123,6 +123,27 @@ def cache_images(items: list[dict], limit: int = 200) -> int:
     return cached
 
 
+def shot_note() -> str:
+    """What the screenshot run did, readable from the published page.
+
+    A step under continue-on-error that quietly does nothing is indistinguishable from a step that was
+    never added, and the workflow logs are not reachable from outside, so the page carries the outcome.
+    """
+    path = IMAGE_CACHE.parent / "shots.json"
+    if not path.exists():
+        return "not run"
+    try:
+        status = json.loads(path.read_text(encoding="utf-8")).get(".status") or {}
+    except (json.JSONDecodeError, OSError):
+        return "unreadable"
+    if not status:
+        return "not run"
+    browser = status.get("browser") or "none"
+    note = f" ({status['note']})" if status.get("note") else ""
+    return (f"{status.get('taken', 0)} shot, {status.get('refused', 0)} refused, "
+            f"{status.get('wanted', 0)} wanted, browser {browser.split('/')[-1] or 'none'}{note}")
+
+
 def attach_shots(items: list[dict], limit: int, site: pathlib.Path, shots: pathlib.Path) -> int:
     """Give a story whose feed carried no picture the screenshot of its own page, if one was taken.
 
@@ -310,6 +331,7 @@ BASE_HEAD = """<!doctype html>
 <link rel="alternate" type="application/atom+xml" title="upsy.si" href="/feed.xml">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <meta name="upsy-editor" content="{editor}">
+<meta name="upsy-shots" content="{shots}">
 <style>{css}</style>
 </head>
 <body>
@@ -457,6 +479,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     )
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
+        shots=esc(shot_note()),
         title="upsy.si \u2014 watching superintelligence happen",
         description=truncate("Live wire on superintelligence: breaking news and upsy moments in AI, "
                              f"from {counts['sources']} sources and {counts['items']} stories.", 200),
@@ -595,6 +618,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     og_image = f'<meta property="og:image" content="{SITE_URL}{esc(card)}">\n' if card else ""
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
+        shots=esc(shot_note()),
         title=f"{truncate(item['title'], 90)} | upsy.si",
         description=truncate(item["summary"] or item["title"], 200),
         canonical=f"{SITE_URL}/s/{item['id']}/", og_type="article", site_name=SITE_NAME,
@@ -664,6 +688,7 @@ def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> st
         )
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
+        shots=esc(shot_note()),
         title="sources | upsy.si", description="Every feed upsy.si reads, with its health and freshness.",
         canonical=f"{SITE_URL}/sources.html", og_type="website", site_name=SITE_NAME,
         og_title="sources | upsy.si", og_description="Every feed upsy.si reads, with health and freshness.",

@@ -99,6 +99,17 @@ def select(items: list[dict], shots: dict, failures: dict, limit: int, most: int
     return picked
 
 
+def record_status(shots: dict, failures: dict, status: dict) -> None:
+    """Keep the last run's outcome in the bookkeeping file so the build can publish it.
+
+    The workflow logs are not readable from outside, and a step under continue-on-error that quietly
+    does nothing looks exactly like a step that was never added. The published page reports it instead.
+    """
+    status["date"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    status["failures"] = len(failures)
+    shots[".status"] = status
+
+
 def shoot(browser: str, url: str, out: pathlib.Path, width: int, height: int, wait_ms: int,
           timeout: int) -> tuple[bool, str]:
     """Render one page to a PNG. Returns (ok, reason)."""
@@ -152,6 +163,10 @@ def main() -> int:
     print(f"{len(items)} story(ies); {sum(1 for i in items if i.get('image'))} already have a picture; "
           f"{len(todo)} need a screenshot")
 
+    if not SHOT_STATE.exists():
+        SHOT_STATE.parent.mkdir(parents=True, exist_ok=True)
+        SHOT_STATE.write_text("{}\n", encoding="utf-8")
+
     if args.dry_run:
         for item in todo[:20]:
             print(f"   would shoot: {item['url'][:100]}")
@@ -165,6 +180,8 @@ def main() -> int:
     if not browser:
         # Not a failure: without a browser the site simply keeps the text-first cards it has.
         print("no browser on this machine, so no screenshots this run")
+        record_status(shots, failures, {"browser": "", "wanted": len(todo), "taken": 0,
+                                        "refused": 0, "note": "no browser found"})
         return 0
     print(f"   using {browser}")
 
@@ -190,6 +207,9 @@ def main() -> int:
             print(f"   skip {item.get('sourceName', '?')[:22]:<22} {why} :: {url[:60]}")
 
     shots[".failures"] = failures
+    record_status(shots, failures, {"browser": browser, "wanted": len(todo), "taken": taken,
+                                    "refused": refused,
+                                    "note": "budget reached" if taken + refused < len(todo) else ""})
     SHOT_STATE.write_text(json.dumps(shots, ensure_ascii=False, indent=0), encoding="utf-8")
     total = sum(1 for v in shots.values() if isinstance(v, dict) and v.get("file"))
     print(f"shot {taken}, refused {refused}, {total} shot(s) on file, "
