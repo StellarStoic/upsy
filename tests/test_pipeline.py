@@ -326,6 +326,30 @@ class SiteBuild(unittest.TestCase):
         self.assertIn(".row[hidden], .row.is-hidden { display:none; }", page)
         self.assertIn("classList.toggle('is-hidden'", page)
 
+    def test_a_story_with_no_picture_takes_the_screenshot_of_its_page(self):
+        import hashlib
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            site, shots = pathlib.Path(td) / "site", pathlib.Path(td) / "shots"
+            site.mkdir(); shots.mkdir()
+            want = "https://example.test/a-story-with-no-picture"
+            shot = shots / (hashlib.sha1(want.encode()).hexdigest()[:20] + ".png")
+            shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 400)      # magic bytes are what the builder checks
+            html = shots / (hashlib.sha1(b"https://example.test/challenged").hexdigest()[:20] + ".png")
+            html.write_bytes(b"<!DOCTYPE html><html>verify you are human</html>")
+
+            items = [{"url": want, "image": "", "imageLocal": ""},
+                     {"url": "https://example.test/challenged", "image": "", "imageLocal": ""},
+                     {"url": "https://example.test/has-a-picture", "image": "https://cdn/x.jpg",
+                      "imageLocal": ""}]
+            # a story whose feed carried a picture keeps it, a challenge page is not a picture
+            self.assertEqual(build_site.attach_shots(items, 10, site, shots), 1)
+            self.assertEqual(items[0]["imageLocal"], f"/img/{shot.name}")
+            self.assertEqual(items[1]["imageLocal"], "")
+            self.assertEqual(items[2]["imageLocal"], "")
+            self.assertTrue((site / "img" / shot.name).exists())
+
     def test_nothing_renders_as_python_none(self):
         for path in [p for p in self.site.rglob("*.html")]:
             text = path.read_text(encoding="utf-8")

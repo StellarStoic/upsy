@@ -40,6 +40,8 @@ jobs:
           path: |
             data/state.json
             data/images
+            data/shots
+            data/shots.json
           key: upsy-state-${{ github.run_id }}
           restore-keys: |
             upsy-state-
@@ -59,6 +61,13 @@ jobs:
           UPSY_LLM_API_KEY: ${{ secrets.UPSY_LLM_API_KEY }}
           UPSY_LLM_MODEL: ${{ vars.UPSY_LLM_MODEL }}
         run: python3 tools/moments.py
+
+      # Roughly half the feeds carry no picture. A headless Chrome, already on the runner image,
+      # shoots the story's own page instead - and data/shots rides the cache above, so each page is
+      # shot once. continue-on-error is deliberate: no browser, no screenshots, no problem.
+      - name: screenshot the stories with no picture
+        continue-on-error: true
+        run: python3 tools/screenshots.py --max 60
 
       - name: build the site
         run: python3 tools/build_site.py
