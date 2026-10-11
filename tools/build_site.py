@@ -194,6 +194,9 @@ CSS = """
   .rows { border-right:1px solid var(--line); min-width:0; }
   .row { display:grid; grid-template-columns:70px minmax(0,1fr) 112px; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line); }
   .row:hover { background:var(--panel); }
+  /* `.row` sets display:grid, which outranks the browser's own [hidden] { display:none } - so a
+     filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
+  .row[hidden], .row.is-hidden { display:none; }
   .row.is-new { box-shadow:inset 3px 0 0 var(--cool); }
   .energy { display:flex; flex-direction:column; gap:3px; }
   .energy .n { font-size:17px; }
@@ -360,6 +363,7 @@ SIGNAL_JS = """<script>
     for (const row of rows) {
       const ok = matches(row);
       row.hidden = !ok;
+      row.classList.toggle('is-hidden', !ok);
       if (ok) shown += 1;
     }
     count.textContent = shown + ' of ' + rows.length + ' shown';

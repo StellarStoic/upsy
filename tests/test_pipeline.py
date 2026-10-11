@@ -316,6 +316,16 @@ class SiteBuild(unittest.TestCase):
         self.assertTrue((self.site / "robots.txt").read_text(encoding="utf-8").startswith("User-agent: *"))
         self.assertTrue((self.site / ".nojekyll").exists())
 
+    def test_filtered_rows_are_actually_hidden(self):
+        """A filter that sets `hidden` on `display:grid` rows renders nothing.
+
+        The rule has to outrank `.row`, and the script has to do more than flip the property - the
+        first version of this looked correct and changed nothing on screen.
+        """
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        self.assertIn(".row[hidden], .row.is-hidden { display:none; }", page)
+        self.assertIn("classList.toggle('is-hidden'", page)
+
     def test_nothing_renders_as_python_none(self):
         for path in [p for p in self.site.rglob("*.html")]:
             text = path.read_text(encoding="utf-8")
