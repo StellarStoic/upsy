@@ -251,7 +251,7 @@ CSS = """
     font:inherit; color:inherit; text-align:left; }
   .net-item:hover { background:var(--panel); }
   .net-item .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .net-item.is-on { background:var(--panel); border-left-color:var(--hot); color:var(--hot); font-weight:600; }
+  .net-item.is-on { background:var(--panel); border-left-color:var(--upsy); color:var(--upsy); font-weight:600; }
   /* Appears once the reader is a few articles down. Hidden by display rather than [hidden]:
      an author rule outranks the browser's own, which is how a filter here once changed nothing. */
   #to-top { display:none; position:fixed; right:18px; bottom:18px; z-index:40; gap:5px;
@@ -272,7 +272,7 @@ CSS = """
   .net-toggle svg { width:17px; height:17px; display:block; }
   .net-toggle:hover { border-color:var(--cool); color:var(--cool); }
   .net-toggle[aria-expanded="true"] { border-color:var(--cool); color:var(--cool); }
-  .net-toggle.is-filtered { border-color:var(--hot); color:var(--hot); }
+  .net-toggle.is-filtered { border-color:var(--upsy); color:var(--upsy); }
   .net-count { min-width:15px; padding:0 4px; text-align:center; border:1px solid currentColor;
     border-radius:999px; font-size:10px; line-height:1.4; }
   .net-backdrop { position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.55); opacity:0;
