@@ -408,6 +408,46 @@ class SiteBuild(unittest.TestCase):
         self.assertIn("setInterval(watchScroll, 250)", page)
         self.assertIn("window.scrollTo(0, 0);", page)
 
+    def test_the_source_network_is_a_drawer_behind_a_header_icon(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        header = page[page.index("<header"):page.index("</header>")]
+        self.assertIn('id="net-toggle"', header, "the network icon belongs in the header, top right")
+        self.assertIn('aria-controls="net-drawer"', header)
+        # The list has to live in the drawer, and the right column has to be free of it: two copies
+        # of one id is how a drawer opens onto nothing.
+        drawer = page[page.index('<aside class="net-drawer"'):page.index("</aside>", page.index('<aside class="net-drawer"'))]
+        self.assertIn('id="net"', drawer)
+        self.assertIn('class="net-item"', drawer)
+        column = page[page.index("<aside>"):page.index("</aside>", page.index("<aside>"))]
+        self.assertNotIn('id="net"', column, "the source list is no longer the right column's")
+        self.assertIn("upsy moments", column)
+        self.assertIn("what this is", column)
+
+    def test_the_moved_list_still_filters_the_stream(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        # The filter finds the list by id. Move the list and forget the id, and every source tap
+        # becomes a button that changes nothing.
+        self.assertIn("querySelectorAll('#net .net-item')", page)
+        self.assertIn("state.sources.has(key)", page)
+        self.assertIn('data-src="', page)
+        # And with the list out of sight, the icon has to show that a source is selected.
+        self.assertIn("netToggle.classList.toggle('is-filtered'", page)
+        self.assertIn('id="net-count"', page)
+        self.assertIn("state.sources.clear()", page)
+
+    def test_the_drawer_closes_by_keyboard_and_backdrop(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        self.assertIn("event.key === 'Escape'", page)
+        self.assertIn('id="net-backdrop"', page)
+        self.assertIn("netBackdrop.addEventListener('click'", page)
+        self.assertIn("body.net-open", page, "an open drawer must hold the page still behind it")
+
+    def test_the_network_icon_is_open_source_and_credited(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        self.assertIn("lucide (ISC licence)", page)
+        icon = page[page.index('id="net-toggle"'):]
+        self.assertIn("<svg", icon[:1200])
+
     def test_the_inline_scripts_are_valid_javascript(self):
         """A syntax error in one script block silently kills it, filters and all.
 

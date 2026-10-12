@@ -264,6 +264,34 @@ CSS = """
   /* Sits 700px into the document: once it leaves the viewport the reader is into the stories. */
   #top-mark { position:absolute; top:700px; left:0; width:1px; height:1px; }
   .net-all { margin:8px 0 0; font-size:.78rem; opacity:.7; }
+  /* The source network folded behind the header icon. Same list, same filter, out of the stream's
+     way - and one drawer serves both: full width on a phone, a slide-over on a desk, so there is
+     no second implementation to drift from this one. */
+  .net-toggle { display:inline-flex; align-items:center; gap:6px; background:none; border:1px solid var(--line);
+    color:var(--dim); padding:4px 7px; cursor:pointer; font:inherit; }
+  .net-toggle svg { width:17px; height:17px; display:block; }
+  .net-toggle:hover { border-color:var(--cool); color:var(--cool); }
+  .net-toggle[aria-expanded="true"] { border-color:var(--cool); color:var(--cool); }
+  .net-toggle.is-filtered { border-color:var(--hot); color:var(--hot); }
+  .net-count { min-width:15px; padding:0 4px; text-align:center; border:1px solid currentColor;
+    border-radius:999px; font-size:10px; line-height:1.4; }
+  .net-backdrop { position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.55); opacity:0;
+    pointer-events:none; transition:opacity .18s ease; }
+  .net-backdrop.is-open { opacity:1; pointer-events:auto; }
+  .net-drawer { position:fixed; top:0; right:0; height:100%; width:min(360px,88vw); z-index:60;
+    background:var(--bg); border-left:1px solid var(--line); padding:16px 16px 28px; overflow-y:auto;
+    visibility:hidden; transform:translateX(101%); transition:transform .18s ease, visibility .18s; }
+  .net-drawer.is-open { visibility:visible; transform:none; }
+  .net-drawer h3 { font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim); margin:0 0 10px; }
+  .net-head { display:flex; align-items:center; gap:10px; }
+  .net-head h3 { margin:0; }
+  .net-head button { background:none; border:1px solid var(--line); color:var(--dim); font:inherit;
+    font-size:11px; padding:2px 8px; cursor:pointer; }
+  .net-head button:hover { border-color:var(--cool); color:var(--cool); }
+  .net-head .net-x { margin-left:auto; padding:2px 7px; }
+  .net-hint { margin:10px 0 12px; font-size:.72rem; line-height:1.45; color:var(--dim2); }
+  body.net-open { overflow:hidden; }
+  @media (prefers-reduced-motion: reduce) { .net-drawer, .net-backdrop { transition:none; } }
   /* `.row` sets display:grid, which outranks the browser's own [hidden] { display:none } - so a
      filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
   .row[hidden], .row.is-hidden { display:none; }
@@ -329,6 +357,9 @@ CSS = """
     .row .thumb { display:none; }
     header.top, .bar { padding-left:14px; padding-right:14px; }
     .status { width:100%; margin-left:0; }
+    /* The status line takes a row of its own on a phone, which drops the icon onto the next
+       one at the left edge - as far from "top right" as a header gets. */
+    .net-toggle { margin-left:auto; }
   }
 """
 
@@ -365,6 +396,17 @@ HEADER = """<header class="top">
     <span>updated {updated}</span>
     <span><a href="/sources.html">sources</a></span>
   </div>
+  <button id="net-toggle" class="net-toggle" type="button" aria-expanded="false"
+          aria-controls="net-drawer" aria-label="source network" title="source network">
+    <!-- network, from lucide (ISC licence): https://lucide.dev/icons/network -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/>
+      <rect x="9" y="2" width="6" height="6" rx="1"/>
+      <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>
+    </svg>
+    <span class="net-count" id="net-count" hidden></span>
+  </button>
 </header>
 """
 
@@ -423,6 +465,23 @@ FILTER_BAR = """<div class="bar">
 </div>
 <button id="to-top" type="button" aria-label="back to the top">&#8593;<span>top</span></button>"""
 
+
+# The source list, hoisted out of the right column: the header icon opens it. It is still the filter
+# as well as the list - a tap narrows the stream to that source - so it has to be one tap from the
+# page, never a page of its own.
+NET_DRAWER = """<div class="net-backdrop" id="net-backdrop"></div>
+<aside class="net-drawer" id="net-drawer" aria-label="source network">
+  <div class="net-head">
+    <h3>source network</h3>
+    <button id="net-clear" type="button" hidden>clear</button>
+    <button id="net-close" class="net-x" type="button" aria-label="close the source network">&#215;</button>
+  </div>
+  <p class="net-hint">Every source in this build, the busiest first; the number is what it contributed
+  here. Tap one to read that source alone, tap it again to let the rest back in.</p>
+  <div class="net" id="net">{net_rows}</div>
+  <p class="net-all"><a href="/sources.html">all {total} sources &amp; the method</a></p>
+</aside>"""
+
 SIGNAL_JS = """<script>
 (function () {
   // A live collection, not a snapshot: rows pulled in by "load more" answer to the same
@@ -444,6 +503,51 @@ SIGNAL_JS = """<script>
       if (window.upsyLoadAll) window.upsyLoadAll().then(apply);
     });
   }
+  // The source network is folded behind the header icon now. The list inside is the same one that
+  // narrows the stream, so opening and closing is all this code has to do - plus the badge that
+  // says a source is selected, because a hidden filter the reader cannot see is a trap.
+  const netToggle = document.getElementById('net-toggle');
+  const netDrawer = document.getElementById('net-drawer');
+  const netBackdrop = document.getElementById('net-backdrop');
+  const netCount = document.getElementById('net-count');
+  const netClear = document.getElementById('net-clear');
+  const netClose = document.getElementById('net-close');
+  function netOpen() { return netDrawer.classList.contains('is-open'); }
+  function setNet(open) {
+    netDrawer.classList.toggle('is-open', open);
+    netBackdrop.classList.toggle('is-open', open);
+    document.body.classList.toggle('net-open', open);
+    netToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      const first = netDrawer.querySelector('.net-item');
+      if (first) first.focus({ preventScroll: true });
+    } else if (document.activeElement && netDrawer.contains(document.activeElement)) {
+      netToggle.focus({ preventScroll: true });
+    }
+  }
+  function syncNet() {
+    const n = state.sources.size;
+    netCount.hidden = n === 0;
+    netCount.textContent = String(n);
+    netClear.hidden = n === 0;
+    netToggle.classList.toggle('is-filtered', n > 0);
+    netToggle.setAttribute('aria-label', n ? 'source network, ' + n + ' selected' : 'source network');
+  }
+  netToggle.addEventListener('click', function () { setNet(!netOpen()); });
+  netClose.addEventListener('click', function () { setNet(false); });
+  netBackdrop.addEventListener('click', function () { setNet(false); });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && netOpen()) setNet(false);
+  });
+  netClear.addEventListener('click', function () {
+    for (const button of document.querySelectorAll('#net .net-item')) {
+      button.classList.remove('is-on');
+      button.setAttribute('aria-pressed', 'false');
+    }
+    state.sources.clear();
+    apply();
+    if (window.upsyLoadAll) window.upsyLoadAll().then(apply);
+  });
   function matches(row) {
     if (state.breaking && row.dataset.breaking !== '1') return false;
     if (state.upsy && row.dataset.upsy !== '1') return false;
@@ -461,6 +565,7 @@ SIGNAL_JS = """<script>
       if (ok) shown += 1;
     }
     count.textContent = shown + ' of ' + rows.length + ' shown';
+    syncNet();
   }
   for (const name of ['breaking', 'upsy', 'image']) {
     const button = document.getElementById('f-' + name);
@@ -568,7 +673,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
         og_image="", twitter_card="summary", css=CSS)
     header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
                            upsy=counts["upsy"], updated=age(data["generated"], now))
-    return f"""{head}{header}{FILTER_BAR}
+    drawer = NET_DRAWER.format(net_rows=net_rows, total=len(meta["health"]))
+    return f"""{head}{header}{drawer}{FILTER_BAR}
 <span id="top-mark" aria-hidden="true"></span>
 <main>
   <section class="rows" id="stream">
@@ -579,11 +685,6 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     <section>
       <h3>upsy moments</h3>
       {anomalies}
-    </section>
-    <section>
-      <h3>source network</h3>
-      <div class="net" id="net">{net_rows}</div>
-      <p class="net-all"><a href="/sources.html">all {len(meta["health"])} sources &amp; the method</a></p>
     </section>
     <section>
       <h3>what this is</h3>
