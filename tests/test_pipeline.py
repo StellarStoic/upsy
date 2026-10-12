@@ -477,3 +477,45 @@ class SiteBuild(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class EventPagesArePromotionsTest(unittest.TestCase):
+    """A meetup page is a promotion with a date on it, and it used to rank like news.
+
+    The board is sorted by score, so an event page that keeps its full freshness sits at the top:
+    one did, at 153 energy, because its feed summary was a bland sentence and never said "register"
+    in the two lines the card shows.
+    """
+
+    def signals(self, **item):
+        base = {"title": "A talk about alignment", "summary": "Doors at seven.",
+                "url": "https://example.com/posts/one", "content": ""}
+        base.update(item)
+        return fetcher.promo_signals(base, f"{base['title']} {base['summary']}".lower())
+
+    def test_an_event_address_is_a_promotion_on_its_own(self):
+        # The reader's own link, kept as the fixture.
+        url = "https://www.lesswrong.com/events/4iNmmyrLALGr6d8tw/krasnoyarsk-acx-meetups-everywhere-fall-2026"
+        self.assertEqual(self.signals(url=url), ["path:events"])
+
+    def test_an_event_body_is_a_promotion_when_the_summary_says_nothing(self):
+        signals = self.signals(content="Registration is open for our fall meetup. Space is limited, so reserve your spot early.")
+        self.assertEqual(sorted(signals), ["registration is", "reserve your spot", "space is limited"])
+
+    def test_a_story_mentioning_a_newsletter_is_not_a_promotion(self):
+        # The failure mode this narrowing exists to prevent: nearly every article carries this line.
+        signals = self.signals(
+            title="OpenAI's new model tops the benchmarks",
+            summary="The company says the training run was its largest.",
+            content="The company published results on Tuesday. Subscribe to our newsletter for more coverage of the field.",
+        )
+        self.assertEqual(signals, [])
+
+    def test_a_word_merely_containing_a_segment_is_not_a_promotion(self):
+        self.assertEqual(self.signals(url="https://example.com/posts/events-are-fun"), [])
+        self.assertEqual(self.signals(url="https://example.com/posts/eventual-consistency"), [])
+
+    def test_the_card_still_reads_first_and_wins(self):
+        signals = self.signals(title="Register now for our webinar", url="https://example.com/posts/one")
+        self.assertIn("register", signals)
+        self.assertNotIn("path:events", signals)

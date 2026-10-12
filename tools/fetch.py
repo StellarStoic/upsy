@@ -62,6 +62,25 @@ PROMO_TERMS = (
     "coupon", "discount", "buy now", "on sale", "newsletter", "subscribe to",
 )
 
+# An event page is a promotion with a date on it, and it can hide from the list above: a meetup whose
+# feed summary is a bland sentence never says "register" in the two lines the card shows, so it keeps
+# its freshness and ranks like news. These phrases are how a page asks a reader to turn up.
+# Only the body's opening is read. A publisher's footer ("subscribe to our newsletter") sits in
+# almost every article, and matching the whole body would sink most of the board for boilerplate.
+PROMO_BODY_PHRASES = (
+    "register now", "registration is", "registration for", "join us for", "join us at",
+    "save your seat", "early bird", "reserve your spot", "rsvp", "seats are limited",
+    "space is limited", "get your ticket", "buy tickets", "sign up for the event",
+    "the event will be held", "attendees will", "meet us at", "doors open",
+)
+BODY_PROMO_CHARS = 700
+# ...and the address, which a registration page cannot hide. Whole path segments only, so a post
+# called "events-are-fun" is not caught by a substring.
+PROMO_PATH_SEGMENTS = frozenset((
+    "event", "events", "meetup", "meetups", "webinar", "webinars", "workshop", "workshops",
+    "conference", "conferences", "summit", "summits", "tickets", "rsvp", "registration",
+))
+
 
 def _pattern(term: str) -> re.Pattern:
     stem = term.endswith("*")
@@ -72,6 +91,38 @@ def _pattern(term: str) -> re.Pattern:
 def matches(terms, text: str) -> list[str]:
     haystack = (text or "").lower()
     return [term for term in terms if _pattern(term).search(haystack)]
+
+
+def promo_signals(item: dict, haystack: str) -> list[str]:
+    """Why an item counts as a promotion, as a list of reasons.
+
+    Three places, narrowest first: the words the card itself shows, the opening of the body the feed
+    already gave us, and the address. A promotion's body asks the reader to turn up or sign up; an
+    article's opening talks about its subject. Only the opening is read because a publisher's footer
+    ("subscribe to our newsletter") sits in nearly every article, and matching a whole body would
+    penalise most of the board for boilerplate. Returning the reasons is what makes a surprise
+    readable from the data instead of guesswork.
+    """
+    hits = matches(PROMO_TERMS, haystack)
+    content = (item.get("content") or "")[:BODY_PROMO_CHARS]
+    if content:
+        hits = hits + [term for term in matches(PROMO_BODY_PHRASES, content) if term not in hits]
+    segment = promo_path_segment(item.get("url") or "")
+    if segment and not hits:
+        hits = [f"path:{segment}"]
+    return hits
+
+
+def promo_path_segment(url: str) -> str:
+    """The path segment that makes a URL a registration page, or an empty string."""
+    try:
+        path = urllib.parse.urlsplit(url or "").path.lower()
+    except ValueError:  # a malformed URL is not a promotion, it is just malformed
+        return ""
+    for segment in path.split("/"):
+        if segment in PROMO_PATH_SEGMENTS:
+            return segment
+    return ""
 
 
 SI_TERMS = (
@@ -665,7 +716,7 @@ def run(args: argparse.Namespace) -> int:
         question = any(item["title"].strip().lower().startswith(start) for start in QUESTION_STARTS)
         if question:
             score -= 18.0
-        promo_hits = matches(PROMO_TERMS, haystack)
+        promo_hits = promo_signals(item, haystack)
         if promo_hits:
             score -= 30.0
         if item.get("alsoCoveredBy"):
@@ -678,6 +729,10 @@ def run(args: argparse.Namespace) -> int:
         item["upsyScore"] = len(upsy_hits) + (1 if item["source"] in UPSY_SOURCES else 0)
         item["upsyTerms"] = upsy_hits[:6]
         item["promo"] = bool(promo_hits)
+        # Why a story was called a promotion, so the next surprise is readable from the data rather
+        # than guessed at: the term, or the path segment that condemned it.
+        if promo_hits:
+            item["promoTerms"] = promo_hits[:6]
         item["question"] = question
         item["breaking"] = bool(
             published
