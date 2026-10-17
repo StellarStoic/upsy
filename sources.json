@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-11",
+  "updated": "2026-10-17",
   "notes": "Every source here was fetched and parsed before being listed: item count and newest item are from a real probe. 'tier' is the ranking weight (1 = first-party lab or primary, 2 = press, 3 = community/aggregator). Sources that failed their probe are kept with enabled:false and the reason, so the record of what was tried survives.",
   "defaults": {
     "enabled": true,
