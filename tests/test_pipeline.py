@@ -220,6 +220,29 @@ class ArchivePreamble(unittest.TestCase):
         self.assertEqual(fetcher.strip_archive_preamble(text), text)
 
 
+class WireSelection(unittest.TestCase):
+    """A curated, slow source must reach the page even though it is not news."""
+
+    def item(self, source, score, published="2026-10-01T00:00:00+00:00"):
+        return {"source": source, "score": score, "published": published}
+
+    def test_a_kept_source_survives_the_cut(self):
+        listed = [self.item("press", 100 - n) for n in range(10)] + [self.item("library", 8.0)]
+        chosen = fetcher.select_items(listed, [{"id": "library", "keep": True}], limit=5)
+        self.assertIn("library", [i["source"] for i in chosen])
+        self.assertEqual(len(chosen), 5)
+
+    def test_without_the_flag_the_cut_applies_normally(self):
+        listed = [self.item("press", 100 - n) for n in range(10)] + [self.item("library", 8.0)]
+        chosen = fetcher.select_items(listed, [{"id": "library"}], limit=5)
+        self.assertNotIn("library", [i["source"] for i in chosen])
+
+    def test_the_selection_stays_in_score_order(self):
+        listed = [self.item("library", 8.0), self.item("press", 90.0)]
+        chosen = fetcher.select_items(listed, [{"id": "library", "keep": True}], limit=2)
+        self.assertEqual([i["score"] for i in chosen], [90.0, 8.0])
+
+
 class PublishedSchema(unittest.TestCase):
     """Every field the site reads must exist on a published item.
 

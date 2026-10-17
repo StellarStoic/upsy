@@ -571,6 +571,21 @@ def tokens(text: str) -> set[str]:
     return {w for w in words if len(w) > 2 and w not in STOPWORDS}
 
 
+def select_items(listed: list[dict], sources: list[dict], limit: int) -> list[dict]:
+    """The wire: the best `limit` items, with room reserved for the curated narrow sources.
+
+    A source marked `keep` publishes rarely and is narrowed by its own `require` filter, so its pieces
+    are already curated - but they are not news, and a three-week-old essay scores about 8 against a
+    fresh press story's 100+. Without a reservation such a source is listed on the page and never
+    actually posts anything, which is exactly what happened to the first AI text the library sent.
+    """
+    keep_ids = {source["id"] for source in sources if source.get("keep")}
+    keepers = [item for item in listed if item["source"] in keep_ids]
+    others = [item for item in listed if item["source"] not in keep_ids]
+    chosen = keepers + others[:max(0, limit - len(keepers))]
+    return sorted(chosen, key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
+
+
 def freshness(published: datetime | None, now: datetime) -> float:
     if not published:
         return 0.0
@@ -841,7 +856,7 @@ def run(args: argparse.Namespace) -> int:
             continue
         per_source[item["source"]] = seen_count + 1
         ordered.append(item)
-    items = (ordered + deferred)[:MAX_ITEMS]
+    items = select_items(ordered + deferred, sources, MAX_ITEMS)
 
     counts = {
         "items": len(items),
