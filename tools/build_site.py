@@ -955,7 +955,7 @@ def build_feed(items: list[dict], now: datetime) -> str:
 def build_sitemap(items: list[dict], now: datetime) -> str:
     urls = [f"  <url><loc>{SITE_URL}/</loc><lastmod>{now.date().isoformat()}</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>",
             f"  <url><loc>{SITE_URL}/sources.html</loc><lastmod>{now.date().isoformat()}</lastmod><priority>0.4</priority></url>"]
-    for item in items[:300]:
+    for item in items:
         lastmod = (item.get("published") or "")[:10]
         urls.append(f'  <url><loc>{SITE_URL}/s/{esc(item["id"])}/</loc>{f"<lastmod>{lastmod}</lastmod>" if lastmod else ""}<priority>0.6</priority></url>')
     return f'<?xml version="1.0" encoding="utf-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{chr(10).join(urls)}\n</urlset>\n'
@@ -994,13 +994,16 @@ def main() -> int:
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
-    for item in items[:300]:
+    for item in items:
         related = [i for i in items if i["id"] != item["id"] and i["source"] == item["source"]][:3]
         if len(related) < 3:
             related += [i for i in items if i["id"] != item["id"] and i not in related][:3 - len(related)]
         folder = SITE / "s" / item["id"]
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "index.html").write_text(build_story(item, related, now, moments), encoding="utf-8")
+    # Story pages and the sitemap cover the whole wire, not a slice of it. The wire carries four
+    # hundred items and both loops used to stop at three, so anything past three hundred - a slow,
+    # curated source sits exactly there - was linked and advertised as a path that did not exist.
     # The stream page loads older stories and checks for new builds from these two files.
     (SITE / "data" / "news.json").write_text(
         json.dumps({"generated": data["generated"], "counts": data["counts"],

@@ -243,6 +243,17 @@ class WireSelection(unittest.TestCase):
         self.assertEqual([i["score"] for i in chosen], [90.0, 8.0])
 
 
+class StoryPages(unittest.TestCase):
+    """A card that links to a page the build never wrote is a 404 the sitemap also promises."""
+
+    def test_every_published_item_gets_a_story_page(self):
+        source = (ROOT / "tools" / "build_site.py").read_text(encoding="utf-8")
+        self.assertNotIn("items[:300]",
+                         source,
+                         "a capped loop leaves late items linking to a 404 the sitemap still promises")
+        self.assertIn("for item in items:", source)
+
+
 class PublishedSchema(unittest.TestCase):
     """Every field the site reads must exist on a published item.
 
