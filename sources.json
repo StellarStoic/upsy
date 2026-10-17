@@ -304,6 +304,21 @@
       "category": "community",
       "tier": 3,
       "homepage": "https://news.ycombinator.com/"
+    },
+    {
+      "id": "anarchist-library",
+      "name": "The Anarchist Library",
+      "url": "https://theanarchistlibrary.org/feed",
+      "category": "commentary",
+      "tier": 3,
+      "lang": "en",
+      "homepage": "https://theanarchistlibrary.org/",
+      "fetchArticle": false,
+      "note": "verified by probe 2026-10-17: RSS 2.0, 50 items, newest 2026-10-16, full text in description. It archives every text it holds, so 'require' keeps only the AI-adjacent ones; without it the wire fills with 19th-century pamphlets.",
+      "require": ["artificial intelligence", "machine learning", "deep learning",
+                  "large language model*", "neural network*", "generative ai", "chatgpt",
+                  "chatbot*", "llm*", "gpt*", "algorithm*", "automation", "automated",
+                  "robot*", "cybernetic*", "transhumanis*", "singularity"]
     }
   ]
 }

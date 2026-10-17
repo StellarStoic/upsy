@@ -51,6 +51,9 @@ KEEP_DAYS = 21
 # Ranking. Recency dominates, tier separates a lab announcing something from a blog writing about it.
 TIER_WEIGHT = {1: 42.0, 2: 22.0, 3: 8.0}
 HALF_LIFE_HOURS = 26.0
+# How much of a feed's own body a per-source topical filter may read. Enough to see what the piece
+# is about, short enough that a passing mention deep in a long essay does not qualify it.
+FILTER_CHARS = 2000
 # Matched on word boundaries, never as substrings: "agi" lives inside "again" and "magic", and one
 # term matching by accident is enough to give half the internet a superintelligence score. A term
 # ending in "*" is a stem, so "hallucinat*" still catches "hallucinating".
@@ -91,6 +94,26 @@ def _pattern(term: str) -> re.Pattern:
 def matches(terms, text: str) -> list[str]:
     haystack = (text or "").lower()
     return [term for term in terms if _pattern(term).search(haystack)]
+
+
+def passes_source_filter(source: dict, raw: dict) -> bool:
+    """Whether one item belongs on the wire at all. A source with no `require` keeps everything."""
+    return not (source.get("require") or []) or bool(source_topic_hits(source, raw))
+
+
+def source_topic_hits(source: dict, raw: dict) -> list[str]:
+    """Which of a source's own required terms one parsed item matches.
+
+    A source may carry `require`: terms matched on word boundaries against the headline and the opening
+    of what the feed itself gave us. An empty list means the item is off-topic; a source without the
+    field keeps everything, so adding the field is the only change a narrow feed needs. The opening is
+    bounded by FILTER_CHARS because a passing mention deep inside a long essay should not qualify it.
+    """
+    require = source.get("require") or []
+    if not require:
+        return []
+    haystack = f"{raw.get('title') or ''} {raw.get('summary') or ''} {(raw.get('content') or '')[:FILTER_CHARS]}"
+    return matches(require, haystack)
 
 
 def promo_signals(item: dict, haystack: str) -> list[str]:
@@ -504,6 +527,45 @@ def _echoes(summary: str, title: str) -> bool:
     return len(a & b) / max(1, len(b)) >= 0.7
 
 
+ARCHIVE_PREAMBLE_KEYS = ("author", "title", "subtitle", "date", "notes", "source", "translator",
+                         "transcribed", "published", "written", "edited")
+
+
+def strip_archive_preamble(text: str) -> str:
+    """Drop the 'Author : … Title : … Date : … Source : …' run that archive feeds put before the prose.
+
+    The Anarchist Library prefixes every item with it, and clean_summary() then throws the whole
+    description away as publisher furniture - the item arrived with a headline and no second line at
+    all. Only a leading run of these keys is touched, so an ordinary article is unchanged.
+    """
+    value = (text or "").strip()
+    keys = "|".join(ARCHIVE_PREAMBLE_KEYS)
+    lead = re.compile(rf"^(?:{keys})\s*:\s*", re.I)
+    following = re.compile(rf"\s(?:{keys})\s*:\s*", re.I)
+    for _ in range(12):
+        opening = lead.match(value)
+        if not opening:
+            break
+        rest = value[opening.end():]
+        nxt = following.search(rest)
+        value = (rest[nxt.start():] if nxt else rest).strip()
+        if not nxt:
+            break
+    # "Retrieved on 2026-09-28 from example.org/wiki/x" is where the text came from, not what it says.
+    value = re.sub(r"^Retrieved\s+(?:on|from)\b.*?\s(?=[A-Z][a-z])", "", value, flags=re.S).strip()
+    return value
+
+
+def summary_text(summary: str, title: str) -> str:
+    """An item's second line: catalogue preamble off, publisher furniture dropped, never an echo of the
+    headline. The echo check runs on the stripped text, because a library's preamble repeats the title
+    inside its own metadata ("Title : …") and used to blank every summary the source had."""
+    cleaned = strip_archive_preamble(summary)
+    if _echoes(cleaned, title):
+        return ""
+    return clean_summary(cleaned)
+
+
 def tokens(text: str) -> set[str]:
     words = re.findall(r"[a-z0-9]+", (text or "").lower())
     return {w for w in words if len(w) > 2 and w not in STOPWORDS}
@@ -598,9 +660,18 @@ def run(args: argparse.Namespace) -> int:
     health: list[dict] = []
     for source, items, status in results:
         fresh = 0
+        filtered = 0
         newest = None
+        # A per-source topical filter ("require" in sources.json): The Anarchist Library publishes
+        # every text it archives, so the whole feed is only useful once it is narrowed to the pieces
+        # that touch AI. Terms match on word boundaries (see matches()), so "ai" cannot score "said".
+        require = source.get("require") or []
         for raw in items:
             if not raw["link"] or not raw["title"]:
+                continue
+            ai_terms = source_topic_hits(source, raw)
+            if require and not ai_terms:
+                filtered += 1
                 continue
             identifier = hashlib.sha1(clean_url(raw["link"]).encode("utf-8")).hexdigest()[:16]
             published = raw.get("published_dt") or raw.get("published")
@@ -623,15 +694,17 @@ def run(args: argparse.Namespace) -> int:
                 "tier": source.get("tier", defaults.get("tier", 2)),
                 "published": published.isoformat(timespec="seconds") if published else None,
                 "author": raw["author"][:120],
-                "summary": "" if _echoes(raw["summary"], raw["title"]) else clean_summary(raw["summary"]),
+                "summary": summary_text(raw["summary"], raw["title"]),
                 "content": raw["content"][:8000],
                 "contentFrom": "feed" if raw["has_full_text"] else "",
                 "image": raw["image"],
+                "aiTerms": ai_terms[:6],
                 "fetchArticle": source.get("fetchArticle", defaults.get("fetchArticle", True)),
             })
         health.append({
             "id": source["id"], "name": source["name"], "status": status, "items": len(items),
-            "new": fresh, "newest": newest.isoformat(timespec="seconds") if newest else None,
+            "new": fresh, "filtered": filtered,
+            "newest": newest.isoformat(timespec="seconds") if newest else None,
         })
 
     # One item per URL, and one per near-identical title, keeping the highest tier.
@@ -797,6 +870,7 @@ def run(args: argparse.Namespace) -> int:
             # item, and forgetting to publish one is exactly how the whole build died on sourceUrl.
             "sourceUrl": item["sourceUrl"], "sourceSite": item.get("sourceSite", ""),
             "sourceCategory": item["sourceCategory"],
+            "aiTerms": item.get("aiTerms", []),
             "promo": item.get("promo", False), "question": item.get("question", False),
             "upsyWhy": item.get("upsyWhy", ""),
         })

@@ -169,6 +169,57 @@ class SourceList(unittest.TestCase):
                 self.assertTrue(source.get("note"), f"{source['id']} is disabled without a reason")
 
 
+class SourceTopicFilter(unittest.TestCase):
+    """A source that publishes everything needs narrowing before it reaches an AI wire.
+
+    The Anarchist Library archives every text it holds; without `require` the page fills with
+    nineteenth-century pamphlets and an essay on the Paris Commune outranks a piece about models.
+    """
+
+    def item(self, title, summary="", content=""):
+        return {"title": title, "summary": summary, "content": content}
+
+    def test_a_source_without_a_filter_keeps_everything(self):
+        self.assertTrue(fetcher.passes_source_filter({}, self.item("On the Paris Commune")))
+
+    def test_a_topical_source_drops_what_it_did_not_ask_for(self):
+        source = {"require": ["artificial intelligence", "machine learning"]}
+        self.assertFalse(fetcher.passes_source_filter(source, self.item("Will 1793 Take Place?")))
+        self.assertTrue(fetcher.passes_source_filter(
+            source, self.item("Notes on machine learning and the commune")))
+
+    def test_the_filter_reports_what_matched_so_the_card_can_say_why(self):
+        source = {"require": ["generative ai", "automation"]}
+        hits = fetcher.source_topic_hits(source, self.item("Against generative AI in the studio"))
+        self.assertEqual(hits, ["generative ai"])
+
+    def test_the_filter_reads_the_opening_not_the_whole_body(self):
+        source = {"require": ["automation"]}
+        deep = "x" * (fetcher.FILTER_CHARS + 50) + " automation"
+        self.assertFalse(fetcher.passes_source_filter(source, self.item("A long essay", content=deep)))
+
+    def test_the_filter_matches_words_not_fragments(self):
+        source = {"require": ["ai"]}
+        self.assertTrue(fetcher.passes_source_filter(source, self.item("AI and the class struggle")))
+        self.assertFalse(fetcher.passes_source_filter(source, self.item("Again the same argument")))
+        self.assertFalse(fetcher.passes_source_filter(source, self.item("Said nothing at all")))
+
+
+class ArchivePreamble(unittest.TestCase):
+    """The library prefixes each text with its own catalogue fields, which used to eat the whole dek."""
+
+    def test_the_catalogue_fields_are_stripped(self):
+        text = ("Author : ziq Title : Beware of Open Source Absolutists Date : September 7. 2026 "
+                "Source : Retrieved on 2026-09-28 from raddle.me/wiki/x Open Source Is Not Liberation")
+        cleaned = fetcher.strip_archive_preamble(text)
+        self.assertTrue(cleaned.startswith("Open Source Is Not Liberation"), cleaned)
+        self.assertNotIn("Author :", cleaned)
+
+    def test_prose_that_happens_to_start_with_a_word_like_source_is_untouched(self):
+        text = "Source code is not a constitution, and never was."
+        self.assertEqual(fetcher.strip_archive_preamble(text), text)
+
+
 class PublishedSchema(unittest.TestCase):
     """Every field the site reads must exist on a published item.
 
@@ -178,7 +229,7 @@ class PublishedSchema(unittest.TestCase):
 
     REQUIRED = ("id", "title", "url", "source", "sourceName", "sourceUrl", "sourceSite",
                 "sourceCategory", "tier", "published", "summary", "content", "contentFrom",
-                "image", "imageAlt", "imageFrom", "author", "score", "breaking", "upsy",
+                "image", "imageAlt", "imageFrom", "author", "score", "breaking", "upsy", "aiTerms",
                 "siTerms", "upsyTerms", "upsyWhy", "promo", "question")
 
     def test_real_output_has_every_field_the_site_reads(self):

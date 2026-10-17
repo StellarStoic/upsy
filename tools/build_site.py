@@ -296,9 +296,20 @@ CSS = """
      filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
   .row[hidden], .row.is-hidden { display:none; }
   .row.is-new { box-shadow:inset 3px 0 0 var(--cool); }
-  .energy { display:flex; flex-direction:column; gap:3px; }
+  .energy { display:flex; flex-direction:column; gap:3px; position:relative; cursor:help; }
   .energy .n { font-size:17px; }
   .energy .lbl { font-size:9px; letter-spacing:.12em; color:var(--dim2); text-transform:uppercase; }
+  /* The figure is a number with no unit, so it explains itself: a panel on hover, never a tab stop -
+     four hundred rows of focusable tooltips would bury every link on the page. */
+  .energy .tip { position:absolute; left:0; top:calc(100% + 7px); z-index:40; width:246px;
+    padding:9px 11px; background:var(--panel); border:1px solid var(--line); color:var(--dim);
+    font-size:10.5px; line-height:1.55; letter-spacing:0; text-transform:none; text-align:left;
+    visibility:hidden; opacity:0; transition:opacity .12s ease; pointer-events:none; }
+  .energy .tip b { display:block; margin-bottom:5px; color:var(--fg); font-weight:500; font-size:11px; }
+  .energy .tip em { color:var(--cool); font-style:normal; }
+  .energy:hover .tip { visibility:visible; opacity:1; }
+  @media (prefers-reduced-motion: reduce) { .energy .tip { transition:none; } }
+  @media (max-width:640px) { .energy .tip { display:none; } }
   .meter { height:3px; background:var(--line); }
   .meter i { display:block; height:100%; background:linear-gradient(90deg,var(--cool),var(--upsy)); }
   .row h2 { font-size:15.5px; line-height:1.35; font-weight:500; margin:0; }
@@ -439,11 +450,11 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     picture = item.get("imageLocal") or item.get("image")
     image = (f'<img class="thumb" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" loading="lazy" width="112" height="76">'
              if picture else '<div class="thumb empty" aria-hidden="true"></div>')
-    trace = " ".join(f"<i>{esc(t)}</i>" for t in (item.get("siTerms") or [])[:3])
+    trace = " ".join(f"<i>{esc(t)}</i>" for t in ((item.get("aiTerms") or [])[:2] + (item.get("siTerms") or [])[:3]))
     dek = f'<p class="dek">{esc(truncate(item["summary"], 190))}</p>' if item.get("summary") else ""
     meter = min(100.0, max(5.0, float(item["score"]) * 0.7))
     return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
-  <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span></div>
+  <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span><span class="tip" aria-hidden="true"><b>How energy is counted</b>freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>AI terms in headline and summary: up to <em>+15</em><br>picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline <em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further outlet running the same story<br>the bar is score &times; 0.7</span></div>
   <div>
     <div class="src"><a class="who" href="/s/{esc(item['id'])}/">{esc(item['sourceName'])}</a><span>{age(item.get('published'), now)} ago</span>{''.join(tags)}</div>
     <h2><a href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">{esc(truncate(item['title'], 150))}</a></h2>
@@ -720,7 +731,14 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     article.dataset.src = item.src || '';
     article.innerHTML =
       '<div class="energy"><span class="n">' + Math.round(item.score) + '</span>' +
-      '<span class="lbl">energy</span><span class="meter"><i style="width:' + meter + '%"></i></span></div>' +
+      '<span class="lbl">energy</span><span class="meter"><i style="width:' + meter + '%"></i></span>' +
+      '<span class="tip" aria-hidden="true"><b>How energy is counted</b>' +
+      'freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>' +
+      'source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>' +
+      'AI terms in headline and summary: up to <em>+15</em><br>' +
+      'picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline ' +
+      '<em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further ' +
+      'outlet running the same story<br>the bar is score &times; 0.7</span></div>' +
       '<div><div class="src"><a class="who" href="/s/' + item.id + '/">' + item.sourceName + '</a>' +
       '<span>' + item.age + '</span>' + tags.join('') + '</div>' +
       '<h2><a href="' + item.url + '" target="_blank" rel="noopener nofollow">' + item.title + '</a></h2>' +
