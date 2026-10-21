@@ -50,6 +50,10 @@ KEEP_DAYS = 21
 
 # Ranking. Recency dominates, tier separates a lab announcing something from a blog writing about it.
 TIER_WEIGHT = {1: 42.0, 2: 22.0, 3: 8.0}
+# No single feed may own more than this much of the wire. The three-of-the-top-forty rule keeps the
+# opening view mixed; without a wire-wide cap a feed that publishes a hundred items a day still fills
+# everything below it, and a fifty-source catalogue becomes one blog with guests.
+WIRE_PER_SOURCE = 8
 HALF_LIFE_HOURS = 26.0
 # How much of a feed's own body a per-source topical filter may read. Enough to see what the piece
 # is about, short enough that a passing mention deep in a long essay does not qualify it.
@@ -239,6 +243,21 @@ def first_text(node: ET.Element, names: tuple[str, ...]) -> str:
     return ""
 
 
+def first_text_in_order(node: ET.Element, names: tuple[str, ...]) -> str:
+    """The first named child's text, trying the names in the order given — not in document order.
+
+    `first_text` walks the item and matches on names alone, so whichever of `<link>`, `<guid>` and
+    `<id>` the publisher happened to write first wins. Apple's feed puts `<guid>` first, so the
+    identifier — a slug, not a URL — was chosen as the link and every item from that source was
+    dropped for having none. The order the caller writes is its order of trust; this keeps it.
+    """
+    for name in names:
+        for child in descendants(node):
+            if local(child.tag) == name and (child.text or "").strip():
+                return child.text.strip()
+    return ""
+
+
 def attr_anywhere(node: ET.Element, names: tuple[str, ...], attribute: str) -> str:
     for child in descendants(node):
         if local(child.tag) in names:
@@ -380,29 +399,41 @@ def image_from_node(node: ET.Element) -> str:
     return ""
 
 
-def resolve_link(node: ET.Element, link: str) -> str:
+def resolve_link(node: ET.Element, link: str, base: str = "") -> str:
     """The URL we are willing to publish as a story link.
 
     Atom puts the real address in link/@href and frequently a "tag:host,2026:1" identifier in <id>,
     which is not a link and must never be published as one. Anything that is not http(s) is refused,
     and an item with no link at all is dropped by the collector rather than linked to nowhere.
     """
-    if link.startswith(("http://", "https://")) and is_article_url(link):
-        return link
-    href = attr_anywhere(node, ("link",), "href")
-    if href and href.startswith(("http://", "https://")) and is_article_url(href):
+    if absolute(link, base) and is_article_url(absolute(link, base)):
+        return absolute(link, base)
+    href = absolute(attr_anywhere(node, ("link",), "href"), base)
+    if href and is_article_url(href):
         return href
     return ""
 
 
-def atom_href(node: ET.Element) -> str:
+def absolute(url: str, base: str = "") -> str:
+    """A link as a whole URL. A feed may address its own posts relatively (`<link href="/blog/x">`,
+    which Jekyll's Atom emits), and that is still a story as long as we know the feed's own address."""
+    if not url:
+        return ""
+    if url.startswith(("http://", "https://")):
+        return url
+    if base and url.startswith(("/", "./", "../")):
+        return urllib.parse.urljoin(base, url)
+    return ""
+
+
+def atom_href(node: ET.Element, base: str = "") -> str:
     """Atom's real address: <link rel="alternate" href=...>, otherwise any <link href=...>."""
     fallback = ""
     for child in node:
         if local(child.tag) != "link":
             continue
-        href = (child.get("href") or "").strip()
-        if not href.startswith(("http://", "https://")):
+        href = absolute((child.get("href") or "").strip(), base)
+        if not href:
             continue
         if (child.get("rel") or "alternate").lower() == "alternate":
             return href
@@ -432,7 +463,7 @@ def reusable(items: list[dict]) -> list[dict]:
     return [item for item in items if is_article_url(item.get("link") or "")]
 
 
-def parse_feed(body: bytes) -> list[dict]:
+def parse_feed(body: bytes, base: str = "") -> list[dict]:
     text = body.decode("utf-8", "replace").lstrip("\ufeff \r\n\t")
     root = ET.fromstring(text)
     nodes: list[ET.Element] = []
@@ -445,12 +476,13 @@ def parse_feed(body: bytes) -> list[dict]:
         # Ordered by trust: Atom's href, then the RSS text link, then guid/id - and the first one
         # that is both http and an actual page wins. An id that only points at the site root (The
         # Verge publishes ?p=NNNN ids) is skipped instead of being published as the story's address.
-        candidates = (atom_href(node),
-                      first_text(node, ("link", "origlink", "guid", "id")),
+        candidates = (atom_href(node, base),
+                      first_text_in_order(node, ("link", "origlink", "guid", "id")),
                       attr_anywhere(node, ("link",), "href"))
         link = ""
         for candidate in candidates:
-            if not candidate or not candidate.startswith(("http://", "https://")):
+            candidate = absolute(candidate, base)
+            if not candidate:
                 continue
             cleaned = clean_url(candidate)
             if is_article_url(cleaned):
@@ -462,7 +494,7 @@ def parse_feed(body: bytes) -> list[dict]:
         full_text = first_text(node, ("encoded",))
         items.append({
             "title": title,
-            "link": resolve_link(node, link),
+            "link": resolve_link(node, link, base),
             "published": parse_date(node),
             "author": strip_html(first_text(node, ("author", "creator", "name"))),
             "summary": strip_html(raw_summary)[:1200],
@@ -586,6 +618,24 @@ def select_items(listed: list[dict], sources: list[dict], limit: int) -> list[di
     return sorted(chosen, key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
 
 
+def cap_per_source(items: list[dict], limit: int) -> list[dict]:
+    """Keep at most `limit` items from any one source, in the order they arrived (which is score order).
+
+    Deferring the overflow of the opening view is not enough: the deferred items come back in at their
+    score, so a feed with a hundred fresh entries takes a hundred of the four hundred slots. A wire is a
+    mixture, and the mixture is the point.
+    """
+    kept: list[dict] = []
+    per: dict[str, int] = {}
+    for item in items:
+        count = per.get(item["source"], 0)
+        if count >= limit:
+            continue
+        per[item["source"]] = count + 1
+        kept.append(item)
+    return kept
+
+
 def freshness(published: datetime | None, now: datetime) -> float:
     if not published:
         return 0.0
@@ -641,7 +691,7 @@ def run(args: argparse.Namespace) -> int:
             revived = reusable(_revive(item_cache.get(source["url"], [])))
             return (source, revived, f"not modified ({len(revived)} kept)")
         try:
-            items = parse_feed(body)
+            items = parse_feed(body, source["url"])
         except ET.ParseError as exc:
             kept = reusable(_revive(item_cache.get(source["url"], [])))
             if kept:
@@ -856,7 +906,7 @@ def run(args: argparse.Namespace) -> int:
             continue
         per_source[item["source"]] = seen_count + 1
         ordered.append(item)
-    items = select_items(ordered + deferred, sources, MAX_ITEMS)
+    items = select_items(cap_per_source(ordered + deferred, WIRE_PER_SOURCE), sources, MAX_ITEMS)
 
     counts = {
         "items": len(items),

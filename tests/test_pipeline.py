@@ -220,6 +220,22 @@ class ArchivePreamble(unittest.TestCase):
         self.assertEqual(fetcher.strip_archive_preamble(text), text)
 
 
+class PerSourceCap(unittest.TestCase):
+    def test_no_single_feed_fills_the_wire(self):
+        """Fifty-four sources mean little if the one that publishes a hundred items a day takes the tail."""
+        items = [{"source": "prolific", "score": 100 - n} for n in range(20)]
+        items += [{"source": "quiet", "score": 10}, {"source": "quiet", "score": 9}]
+        kept = fetcher.cap_per_source(items, 8)
+        self.assertEqual(len([i for i in kept if i["source"] == "prolific"]), 8)
+        self.assertEqual(len([i for i in kept if i["source"] == "quiet"]), 2)
+        self.assertEqual([i["score"] for i in kept if i["source"] == "prolific"], [100, 99, 98, 97, 96, 95, 94, 93],
+                         "the cap keeps the best of them, in score order")
+
+    def test_the_cap_leaves_a_source_below_it_untouched(self):
+        items = [{"source": "small", "score": 5}] * 8
+        self.assertEqual(len(fetcher.cap_per_source(items, 8)), 8)
+
+
 class WireSelection(unittest.TestCase):
     """A curated, slow source must reach the page even though it is not news."""
 
@@ -469,6 +485,38 @@ class SiteBuild(unittest.TestCase):
         items = fetcher.parse_feed(feed)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["link"], "https://example.test/2026/10/a-story")
+
+    def test_a_guid_written_before_the_link_does_not_become_the_link(self):
+        """Apple's RSS puts <guid> first, and its guid is a slug: an identifier, never an address."""
+        feed = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>x</title>
+          <item><guid>mlx-distributed-inference</guid>
+            <title>Local and distributed LLM inference</title>
+            <link>https://machinelearning.apple.com/research/mlx-distributed-inference</link>
+            <pubDate>Thu, 15 Oct 2026 00:00:00 GMT</pubDate></item>
+        </channel></rss>"""
+        items = fetcher.parse_feed(feed)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["link"],
+                         "https://machinelearning.apple.com/research/mlx-distributed-inference")
+
+    def test_a_feed_that_links_to_its_own_posts_relatively_still_publishes(self):
+        """Jekyll's Atom writes <link href="/blog/post">, which is a story once you know the feed's host."""
+        feed = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>x</title>
+          <entry><title>Open house 2026</title>
+            <id>/open-house-2026</id>
+            <link href="/open-house-2026" rel="alternate" type="text/html"/>
+            <updated>2026-10-11T10:00:00Z</updated></entry></feed>"""
+        self.assertEqual(fetcher.parse_feed(feed), [],
+                         "with no feed address there is nothing to resolve against, so it is dropped")
+        items = fetcher.parse_feed(feed, "https://sakana.ai/feed")
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["link"], "https://sakana.ai/open-house-2026")
+
+    def test_a_bare_slug_is_not_mistaken_for_a_route(self):
+        feed = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>x</title>
+          <item><title>Only an identifier</title><guid>some-slug</guid></item>
+        </channel></rss>"""
+        self.assertEqual(fetcher.parse_feed(feed, "https://example.test/feed"), [])
 
     def test_every_source_is_a_filter_button_and_every_row_carries_its_source(self):
         page = (self.site / "index.html").read_text(encoding="utf-8")
