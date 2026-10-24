@@ -32,6 +32,29 @@ corrective rules learned from watching real feeds:
 - Subreddit questions ("Serious Question: …") are demoted and kept out of the ticker.
 - A story with an image gets a small bonus, because a story with a picture is worth more on a page.
 
+## Listening
+
+Eight AI podcasts are read as sources with `"kind": "podcast"` (`sources.json`). An episode is an item
+like any other, with three extra fields: `audio` (the enclosure, audio types only — feeds also put
+pictures in enclosures), `duration` (read from `3723`, `62:03` and `1:02:03`, because iTunes allowed
+all three) and `transcript` (a Podcasting 2.0 `podcast:transcript` URL, where a show publishes one).
+
+- **Episodes never enter the stream.** A podcast is an hour long and arrives once a week; sorted by
+  freshness it would either push breaking news down or look abandoned. They get the front page's
+  **listening lane**, a **/listen.html** page and one page each.
+- **The player is the browser's own** `<audio controls preload="none">`. No platform embed means no
+  tracker, and `preload="none"` means the publisher's file is requested only when the reader presses
+  play. Some shows route that file through their own ad-attribution prefixes; the URL served is the
+  one the show publishes, because any other one does not play.
+- **An episode's description is its page text**, kept whole rather than trimmed to a teaser — there
+  is no article behind it to click through to.
+- **Transcripts are captured, not yet used.** The URL is kept on the item and published in
+  `data/episodes.json`; fetching the text, excerpting it and indexing it is the next pass. Nothing
+  transcript-shaped ever goes into the editor's prompt: one Latent Space transcript is 22,000 words
+  and would cost ten times the whole prompt.
+- `data/news.json` carries stories and `data/episodes.json` carries episodes, so a machine reading
+  either one gets a consistent shape.
+
 ## Pictures
 
 Each story's picture is fetched once, cached in `data/images/` between runs and served from

@@ -154,7 +154,8 @@ class SourceList(unittest.TestCase):
     def test_sources_are_well_formed_and_unique(self):
         sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
         self.assertGreaterEqual(len(sources), 10)
-        ids, known = set(), {"lab", "research", "press", "commentary", "community", "paper", "aggregator"}
+        ids, known = set(), {"lab", "research", "press", "commentary", "community", "paper",
+                             "aggregator", "podcast"}
         for source in sources:
             self.assertNotIn(source["id"], ids, f"duplicate source id {source['id']}")
             ids.add(source["id"])
@@ -280,7 +281,8 @@ class PublishedSchema(unittest.TestCase):
     REQUIRED = ("id", "title", "url", "source", "sourceName", "sourceUrl", "sourceSite",
                 "sourceCategory", "tier", "published", "summary", "content", "contentFrom",
                 "image", "imageAlt", "imageFrom", "author", "score", "breaking", "upsy", "aiTerms",
-                "siTerms", "upsyTerms", "upsyWhy", "promo", "question")
+                "siTerms", "upsyTerms", "upsyWhy", "promo", "question",
+                "kind", "audio", "audioType", "duration", "transcript", "transcriptType")
 
     def test_real_output_has_every_field_the_site_reads(self):
         news = ROOT / "data" / "news.json"
@@ -389,6 +391,7 @@ class SiteBuild(unittest.TestCase):
     def test_every_story_has_its_own_page_that_links_out(self):
         page = (self.site / "s" / "abc123" / "index.html").read_text(encoding="utf-8")
         self.assertIn("read the original at Example AI", page)
+        self.assertIn("more from the stream", page)
         self.assertIn("https://example.com/story", page)
         self.assertIn("Body paragraph two", page)  # full text came from the feed
 
@@ -724,3 +727,174 @@ class PageWeight(unittest.TestCase):
             self.assertEqual(removed, 1)
             self.assertTrue((site / "img" / "used.webp").exists())
             self.assertFalse((site / "img" / "orphan.webp").exists())
+
+
+class PodcastLane(unittest.TestCase):
+    """An episode is audio with a page, and it stays out of the wire's stream."""
+
+    FEED = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel><title>A show</title>
+    <item>
+      <title>Episode one</title>
+      <link>https://example.com/ep1</link>
+      <pubDate>Sat, 24 Oct 2026 10:00:00 +0000</pubDate>
+      <description>&lt;p&gt;A long and meaningful description of what this episode is about,
+      whom it interviews and why it is worth an hour of anyone's day. It runs well past any
+      teaser length, which is the point of keeping it whole.&lt;/p&gt;</description>
+      <enclosure url="https://cdn.example.com/ep1.mp3" type="audio/mpeg" length="52428800"/>
+      <itunes:duration>1:02:03</itunes:duration>
+      <podcast:transcript url="https://example.com/ep1.vtt" type="text/vtt"/>
+    </item>
+    <item>
+      <title>Episode two</title>
+      <link>https://example.com/ep2</link>
+      <pubDate>Sat, 17 Oct 2026 10:00:00 +0000</pubDate>
+      <description>Short.</description>
+      <enclosure url="https://cdn.example.com/ep2-art.jpg" type="image/jpeg" length="2048"/>
+    </item>
+  </channel>
+</rss>"""
+
+    def raw(self):
+        return fetcher.parse_feed(self.FEED)
+
+    def test_durations_are_read_from_all_three_shapes_feeds_publish(self):
+        self.assertEqual(fetcher.duration_seconds("3723"), 3723)
+        self.assertEqual(fetcher.duration_seconds("62:03"), 3723)
+        self.assertEqual(fetcher.duration_seconds("1:02:03"), 3723)
+        self.assertEqual(fetcher.duration_seconds(""), 0)
+
+    def test_an_episode_keeps_its_audio_its_length_and_its_transcript(self):
+        fields = fetcher.episode_fields({"kind": "podcast"}, self.raw()[0])
+        self.assertEqual(fields["kind"], "podcast")
+        self.assertEqual(fields["audio"], "https://cdn.example.com/ep1.mp3")
+        self.assertEqual(fields["duration"], 3723)
+        self.assertEqual(fields["transcript"], "https://example.com/ep1.vtt")
+        self.assertEqual(fields["transcriptType"], "text/vtt")
+        # the description is the page's only text before pressing play, so it is kept whole
+        self.assertIn("worth an hour", fields.get("content", ""))
+
+    def test_a_picture_in_an_enclosure_is_not_audio(self):
+        fields = fetcher.episode_fields({"kind": "podcast"}, self.raw()[1])
+        self.assertEqual(fields["audio"], "")
+        self.assertEqual(fields["duration"], 0)
+
+    def test_news_items_carry_the_same_fields_empty(self):
+        fields = fetcher.episode_fields({"kind": "news"}, self.raw()[0])
+        self.assertEqual(fields["kind"], "news")
+        self.assertEqual(fields["audio"], "")
+        self.assertEqual(fields["duration"], 0)
+
+    def test_the_editor_is_never_shown_an_episode(self):
+        items = [{"id": "a", "upsy": True, "promo": False, "question": False, "kind": "podcast",
+                  "title": "Episode", "sourceName": "Show", "summary": ""},
+                 {"id": "b", "upsy": False, "promo": False, "question": False, "kind": "news",
+                  "title": "Story", "sourceName": "Outlet", "summary": ""}]
+        self.assertEqual([i["id"] for i in editor.candidates(items)], ["b"])
+
+    def test_duration_labels_read_like_a_length(self):
+        self.assertEqual(build_site.duration_label(3723), "1 h 02 min")
+        self.assertEqual(build_site.duration_label(3000), "50 min")
+        self.assertEqual(build_site.duration_label(3600), "1 h")
+        self.assertEqual(build_site.duration_label(0), "")
+
+    def test_the_player_asks_for_nothing_until_play_is_pressed(self):
+        episode = {"kind": "podcast", "audio": "https://cdn.example.com/ep1.mp3",
+                   "sourceName": "A show", "duration": 3723,
+                   "transcript": "https://example.com/ep1.vtt"}
+        player = build_site.player_html(episode)
+        self.assertIn('preload="none"', player)
+        self.assertIn('controls', player)
+        self.assertIn("https://cdn.example.com/ep1.mp3", player)
+        self.assertIn("the show&#39;s own transcript", player)
+        self.assertIn("1 h 02 min", player)
+        self.assertEqual(build_site.player_html({"kind": "news", "audio": "https://x/y.mp3"}), "")
+
+
+class PodcastSite(unittest.TestCase):
+    """Build the whole site from a fixture that holds one episode and one story."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(cls.tmp.name)
+        (root / "data").mkdir()
+        story = {"id": "news1", "title": "A lab shipped something strange",
+                 "url": "https://example.com/story", "source": "example", "sourceName": "Example AI",
+                 "sourceUrl": "https://example.com/feed", "sourceSite": "https://example.com",
+                 "sourceCategory": "media", "tier": 2, "published": "2026-10-11T09:00:00+00:00",
+                 "summary": "It did the strange thing.", "content": "", "contentFrom": "",
+                 "image": "", "imageLocal": "", "imageAlt": "", "imageFrom": "", "author": "A",
+                 "score": 100.0, "breaking": True, "upsy": True, "upsyWhy": "", "upsyTerms": [],
+                 "aiTerms": [], "siTerms": ["superintelligence"], "promo": False, "question": False,
+                 "kind": "news", "audio": "", "audioType": "", "duration": 0, "transcript": "",
+                 "transcriptType": ""}
+        episode = {**story, "id": "ep1", "title": "An hour on superintelligence",
+                   "url": "https://example.com/ep1", "source": "show", "sourceName": "A Show",
+                   "sourceCategory": "podcast", "published": "2026-10-11T11:00:00+00:00",
+                   "summary": "A long and meaningful description of the episode.",
+                   "breaking": False, "upsy": False, "kind": "podcast",
+                   "audio": "https://cdn.example.com/ep1.mp3", "audioType": "audio/mpeg",
+                   "duration": 3723, "transcript": "https://example.com/ep1.vtt",
+                   "transcriptType": "text/vtt"}
+        items = [story, episode]
+        news = {"generated": "2026-10-11T12:00:00+00:00",
+                "counts": {"items": 2, "sources": 2, "breaking": 1, "upsy": 1, "withImage": 0,
+                           "withFullText": 0, "new": 2, "promo": 0}, "items": items}
+        meta = {"generated": news["generated"], "counts": news["counts"],
+                "health": [{"id": "show", "name": "A Show", "status": "ok 200", "items": 1, "new": 1,
+                            "newest": episode["published"]}]}
+        (root / "data" / "news.json").write_text(json.dumps(news), encoding="utf-8")
+        (root / "data" / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        (root / "sources.json").write_text((ROOT / "sources.json").read_text(encoding="utf-8"),
+                                           encoding="utf-8")
+        cls._site, cls._data, cls._root = build_site.SITE, build_site.DATA, build_site.ROOT
+        build_site.SITE, build_site.DATA, build_site.ROOT = root / "_site", root / "data", root
+        build_site.CACHE_IMAGES = False
+        build_site.main()
+        cls.site = root / "_site"
+
+    @classmethod
+    def tearDownClass(cls):
+        build_site.SITE, build_site.DATA, build_site.ROOT = cls._site, cls._data, cls._root
+        cls.tmp.cleanup()
+
+    def test_the_episode_has_a_page_with_a_player(self):
+        page = (self.site / "s" / "ep1" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<audio class=\"player\"", page)
+        self.assertIn('preload="none"', page)
+        self.assertIn("https://cdn.example.com/ep1.mp3", page)
+        self.assertIn('"@type": "PodcastEpisode"', page)
+        self.assertIn("https://example.com/ep1.vtt", page)
+
+    def test_the_story_page_has_no_player(self):
+        page = (self.site / "s" / "news1" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("<audio", page)
+
+    def test_the_listen_page_lists_the_episode_and_not_the_story(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        self.assertIn("An hour on superintelligence", page)
+        self.assertNotIn("A lab shipped something strange", page)
+        self.assertIn('class="badge">transcript', page)
+
+    def test_the_stream_carries_stories_and_the_lane_carries_episodes(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        stream = page.split('<section class="rows" id="stream">')[1].split("</section>")[0]
+        self.assertIn("A lab shipped something strange", stream)
+        self.assertNotIn("An hour on superintelligence", stream)
+        self.assertIn('class="listen-row"', page)
+        self.assertIn("An hour on superintelligence", page)     # in the lane, not the stream
+
+    def test_the_served_json_keeps_them_apart(self):
+        news = json.loads((self.site / "data" / "news.json").read_text(encoding="utf-8"))
+        episodes = json.loads((self.site / "data" / "episodes.json").read_text(encoding="utf-8"))
+        self.assertEqual([i["id"] for i in news["items"]], ["news1"])
+        self.assertEqual([i["id"] for i in episodes["items"]], ["ep1"])
+        self.assertEqual(episodes["items"][0]["audio"], "https://cdn.example.com/ep1.mp3")
+        self.assertEqual(episodes["items"][0]["durationSeconds"], 3723)
+
+    def test_the_sitemap_lists_the_listen_page(self):
+        sitemap = (self.site / "sitemap.xml").read_text(encoding="utf-8")
+        self.assertIn("https://upsy.si/listen.html", sitemap)

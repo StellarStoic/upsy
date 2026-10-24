@@ -11,149 +11,13 @@
   },
   "sources": [
     {
-      "id": "openai",
-      "name": "OpenAI",
-      "url": "https://openai.com/news/rss.xml",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://openai.com/news/"
-    },
-    {
-      "id": "deepmind",
-      "name": "Google DeepMind",
-      "url": "https://deepmind.google/blog/rss.xml",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://deepmind.google/discover/blog/"
-    },
-    {
-      "id": "google-ai",
-      "name": "Google AI blog",
-      "url": "https://blog.google/technology/ai/rss/",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://blog.google/technology/ai/"
-    },
-    {
-      "id": "huggingface",
-      "name": "Hugging Face",
-      "url": "https://huggingface.co/blog/feed.xml",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://huggingface.co/blog"
-    },
-    {
-      "id": "aws-ml",
-      "name": "AWS Machine Learning",
-      "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://aws.amazon.com/blogs/machine-learning/"
-    },
-    {
-      "id": "mit-news-ai",
-      "name": "MIT News AI",
-      "url": "https://news.mit.edu/rss/topic/artificial-intelligence2",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://news.mit.edu/topic/artificial-intelligence2"
-    },
-    {
-      "id": "ieee-ai",
-      "name": "IEEE Spectrum AI",
-      "url": "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://spectrum.ieee.org/artificial-intelligence"
-    },
-    {
-      "id": "mit-tech-review-ai",
-      "name": "MIT Technology Review AI",
-      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://www.technologyreview.com/topic/artificial-intelligence/"
-    },
-    {
-      "id": "techcrunch-ai",
-      "name": "TechCrunch AI",
-      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://techcrunch.com/category/artificial-intelligence/"
-    },
-    {
-      "id": "verge-ai",
-      "name": "The Verge AI",
-      "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://www.theverge.com/ai-artificial-intelligence"
-    },
-    {
-      "id": "ars-technica",
-      "name": "Ars Technica",
-      "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://arstechnica.com/ai/"
-    },
-    {
-      "id": "wired-ai",
-      "name": "Wired AI",
-      "url": "https://www.wired.com/feed/tag/ai/latest/rss",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://www.wired.com/tag/artificial-intelligence/"
-    },
-    {
-      "id": "the-decoder",
-      "name": "The Decoder",
-      "url": "https://the-decoder.com/feed/",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://the-decoder.com/"
-    },
-    {
-      "id": "aibusiness",
-      "name": "AI Business",
-      "url": "https://aibusiness.com/rss.xml",
-      "category": "press",
-      "tier": 3,
-      "homepage": "https://aibusiness.com/"
-    },
-    {
-      "id": "marktechpost",
-      "name": "MarkTechPost",
-      "url": "https://www.marktechpost.com/feed/",
-      "category": "press",
-      "tier": 3,
-      "homepage": "https://www.marktechpost.com/"
-    },
-    {
-      "id": "unite-ai",
-      "name": "Unite.AI",
-      "url": "https://www.unite.ai/feed/",
-      "category": "press",
-      "tier": 3,
-      "homepage": "https://www.unite.ai/"
-    },
-    {
-      "id": "simon-willison",
-      "name": "Simon Willison",
-      "url": "https://simonwillison.net/atom/everything/",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://simonwillison.net/"
-    },
-    {
-      "id": "tldr-ai",
-      "name": "TLDR AI",
-      "url": "https://tldr.tech/api/rss/ai",
+      "id": "bens-bites",
+      "name": "Ben's Bites",
+      "url": "https://www.bensbites.com/feed",
       "category": "aggregator",
       "tier": 3,
-      "homepage": "https://tldr.tech/ai",
-      "fetchArticle": false
+      "homepage": "https://www.bensbites.com/",
+      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
     },
     {
       "id": "google-news-agi",
@@ -165,154 +29,81 @@
       "fetchArticle": false
     },
     {
-      "id": "hn-frontier",
-      "name": "Hacker News: frontier AI",
-      "url": "https://hnrss.org/newest?q=AGI+OR+superintelligence+OR+%22frontier+model%22",
-      "category": "community",
+      "id": "rundown-ai",
+      "name": "The Rundown AI",
+      "url": "https://www.therundown.ai/feed",
+      "category": "aggregator",
       "tier": 3,
-      "homepage": "https://news.ycombinator.com/",
-      "fetchArticle": false
+      "homepage": "https://www.therundown.ai/",
+      "probe": "50 items, newest 2026-10-21 on 2026-10-21"
     },
     {
-      "id": "singularity",
-      "name": "r/singularity",
-      "url": "https://www.reddit.com/r/singularity/.rss",
-      "category": "community",
+      "id": "techmeme",
+      "name": "Techmeme",
+      "url": "https://www.techmeme.com/feed.xml",
+      "category": "aggregator",
       "tier": 3,
-      "homepage": "https://www.reddit.com/r/singularity/",
-      "fetchArticle": false
-    },
-    {
-      "id": "anthropic",
-      "name": "Anthropic",
-      "url": "https://www.anthropic.com/news/rss.xml",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://www.anthropic.com/news",
-      "enabled": false,
-      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
-      "note": "feed.missing: https://www.anthropic.com/news/rss.xml returned 404 at probe time; no replacement feed found yet"
-    },
-    {
-      "id": "meta-ai",
-      "name": "Meta AI",
-      "url": "https://ai.meta.com/blog/rss/",
-      "category": "lab",
-      "tier": 1,
-      "homepage": "https://ai.meta.com/blog/",
-      "enabled": false,
-      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
-      "note": "feed.missing: https://ai.meta.com/blog/rss/ returned 404 at probe time; find their current feed before enabling"
-    },
-    {
-      "id": "microsoft-ai",
-      "name": "Microsoft AI blog",
-      "url": "https://blogs.microsoft.com/ai/feed/",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://blogs.microsoft.com/ai/",
-      "enabled": false,
-      "probe": "HTTP 410 Gone on 2026-10-11 - feed retired",
-      "note": "feed.retired: returned 410 Gone; Microsoft moved its AI blog, find the new feed before enabling"
-    },
-    {
-      "id": "venturebeat-ai",
-      "name": "VentureBeat AI",
-      "url": "https://venturebeat.com/category/ai/feed/",
-      "category": "press",
-      "tier": 3,
-      "homepage": "https://venturebeat.com/category/ai/",
-      "enabled": false,
-      "probe": "HTTP 429 on 2026-10-11 - rate limited; retry with a browser-ish UA before enabling",
-      "note": "rate limited (429) at probe time; retry with a slower schedule before enabling"
-    },
-    {
-      "id": "arxiv-cs-ai",
-      "name": "arXiv cs.AI",
-      "url": "https://rss.arxiv.org/rss/cs.AI",
-      "category": "paper",
-      "tier": 3,
-      "homepage": "https://arxiv.org/list/cs.AI/recent",
-      "probe": "473 items, newest 2026-10-21 on 2026-10-21",
-      "note": "probe failed; see the fetch log",
+      "homepage": "https://www.techmeme.com/",
       "require": [
-        "artificial general intelligence",
+        "artificial intelligence",
+        "machine learning",
+        "deep learning",
+        "language model*",
+        "neural network*",
+        "generative ai",
+        "llm*",
+        "gpt*",
+        "chatbot*",
+        "chatgpt",
+        "claude",
+        "gemini",
+        "openai",
+        "anthropic",
+        "deepmind",
+        "mistral",
+        "nvidia",
+        "transformer*",
+        "diffusion model*",
+        "agent*",
+        "inference",
+        "gpu*",
         "superintelligence",
-        "mechanistic interpretability",
-        "ai alignment",
+        "agi",
+        "alignment",
         "ai safety",
-        "frontier model*",
-        "emergent abilit*",
-        "interpretability"
-      ]
+        "robotics",
+        "computer vision"
+      ],
+      "probe": "15 items, newest 2026-10-21 on 2026-10-21"
     },
     {
-      "id": "alignment-forum",
-      "name": "Alignment Forum",
-      "url": "https://www.alignmentforum.org/feed.xml",
-      "site": "https://www.alignmentforum.org/",
-      "category": "community",
-      "tier": 1,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
+      "id": "tldr-ai",
+      "name": "TLDR AI",
+      "url": "https://tldr.tech/api/rss/ai",
+      "category": "aggregator",
+      "tier": 3,
+      "homepage": "https://tldr.tech/ai",
+      "fetchArticle": false
     },
     {
-      "id": "smol-ai-news",
-      "name": "AI News (smol.ai)",
-      "url": "https://news.smol.ai/rss.xml",
-      "site": "https://news.smol.ai/",
-      "category": "press",
-      "tier": 2,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
-    },
-    {
-      "id": "import-ai",
-      "name": "Import AI",
-      "url": "https://jack-clark.net/feed/",
-      "site": "https://jack-clark.net/",
+      "id": "ahead-of-ai",
+      "name": "Ahead of AI",
       "category": "commentary",
       "tier": 2,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
+      "homepage": "https://magazine.sebastianraschka.com/",
+      "url": "https://magazine.sebastianraschka.com/feed",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "feed is malformed: /feed is unclosed CDATA and does not parse"
     },
     {
-      "id": "lesswrong",
-      "name": "LessWrong",
-      "url": "https://www.lesswrong.com/feed.xml",
-      "site": "https://www.lesswrong.com/",
-      "category": "community",
+      "id": "ai-snake-oil",
+      "name": "AI Snake Oil",
+      "url": "https://www.aisnakeoil.com/feed",
+      "category": "commentary",
       "tier": 2,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
-    },
-    {
-      "id": "bair",
-      "name": "BAIR Blog",
-      "url": "https://bair.berkeley.edu/blog/feed.xml",
-      "site": "https://bair.berkeley.edu/blog/",
-      "category": "research",
-      "tier": 2,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
-    },
-    {
-      "id": "microsoft-research",
-      "name": "Microsoft Research",
-      "url": "https://www.microsoft.com/en-us/research/feed/",
-      "site": "https://www.microsoft.com/en-us/research/blog/",
-      "category": "lab",
-      "tier": 2,
-      "enabled": true,
-      "note": "verified by probe: items with links and dates"
-    },
-    {
-      "id": "hacker-news",
-      "name": "Hacker News",
-      "url": "https://news.ycombinator.com/rss",
-      "category": "community",
-      "tier": 3,
-      "homepage": "https://news.ycombinator.com/"
+      "homepage": "https://www.aisnakeoil.com/",
+      "probe": "20 items, newest 2026-10-19 on 2026-10-21"
     },
     {
       "id": "anarchist-library",
@@ -346,6 +137,254 @@
       ]
     },
     {
+      "id": "import-ai",
+      "name": "Import AI",
+      "url": "https://jack-clark.net/feed/",
+      "site": "https://jack-clark.net/",
+      "category": "commentary",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "interconnects",
+      "name": "Interconnects",
+      "url": "https://www.interconnects.ai/feed",
+      "category": "commentary",
+      "tier": 2,
+      "homepage": "https://www.interconnects.ai/",
+      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
+    },
+    {
+      "id": "latent-space",
+      "name": "Latent Space",
+      "url": "https://www.latent.space/feed",
+      "category": "commentary",
+      "tier": 2,
+      "homepage": "https://www.latent.space/",
+      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
+    },
+    {
+      "id": "one-useful-thing",
+      "name": "One Useful Thing",
+      "url": "https://www.oneusefulthing.org/feed",
+      "category": "commentary",
+      "tier": 2,
+      "homepage": "https://www.oneusefulthing.org/",
+      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
+    },
+    {
+      "id": "simon-willison",
+      "name": "Simon Willison",
+      "url": "https://simonwillison.net/atom/everything/",
+      "category": "commentary",
+      "tier": 2,
+      "homepage": "https://simonwillison.net/"
+    },
+    {
+      "id": "alignment-forum",
+      "name": "Alignment Forum",
+      "url": "https://www.alignmentforum.org/feed.xml",
+      "site": "https://www.alignmentforum.org/",
+      "category": "community",
+      "tier": 1,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "hacker-news",
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/rss",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://news.ycombinator.com/"
+    },
+    {
+      "id": "hn-frontier",
+      "name": "Hacker News: frontier AI",
+      "url": "https://hnrss.org/newest?q=AGI+OR+superintelligence+OR+%22frontier+model%22",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://news.ycombinator.com/",
+      "fetchArticle": false
+    },
+    {
+      "id": "lesswrong",
+      "name": "LessWrong",
+      "url": "https://www.lesswrong.com/feed.xml",
+      "site": "https://www.lesswrong.com/",
+      "category": "community",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "llamacpp",
+      "name": "llama.cpp releases",
+      "category": "community",
+      "tier": 3,
+      "url": "https://github.com/ggml-org/llama.cpp/releases.atom",
+      "homepage": "https://github.com/ggml-org/llama.cpp/releases",
+      "enabled": false,
+      "probe": "10 items on 2026-10-21, but the titles carry nothing",
+      "note": "release tags only: the atom titles are build numbers like b11799, which is not a headline a wire can show"
+    },
+    {
+      "id": "singularity",
+      "name": "r/singularity",
+      "url": "https://www.reddit.com/r/singularity/.rss",
+      "category": "community",
+      "tier": 3,
+      "homepage": "https://www.reddit.com/r/singularity/",
+      "fetchArticle": false
+    },
+    {
+      "id": "ai2",
+      "name": "Ai2",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://allenai.org/blog",
+      "url": "https://allenai.org/blog/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /blog/rss.xml and /blog/feed.xml answer 403 to our user agent"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "url": "https://www.anthropic.com/news/rss.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://www.anthropic.com/news",
+      "enabled": false,
+      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
+      "note": "feed.missing: https://www.anthropic.com/news/rss.xml returned 404 at probe time; no replacement feed found yet"
+    },
+    {
+      "id": "apple-ml",
+      "name": "Apple Machine Learning Research",
+      "url": "https://machinelearning.apple.com/rss.xml",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://machinelearning.apple.com/",
+      "probe": "10 items, newest 2026-10-15 on 2026-10-21"
+    },
+    {
+      "id": "aws-ml",
+      "name": "AWS Machine Learning",
+      "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://aws.amazon.com/blogs/machine-learning/"
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://cohere.com/blog",
+      "url": "https://cohere.com/blog/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /blog/rss.xml and /blog/feed answer 404"
+    },
+    {
+      "id": "deepmind",
+      "name": "Google DeepMind",
+      "url": "https://deepmind.google/blog/rss.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://deepmind.google/discover/blog/"
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://elevenlabs.io/blog",
+      "url": "https://elevenlabs.io/blog/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /blog/rss.xml answers 403"
+    },
+    {
+      "id": "github-ai",
+      "name": "GitHub AI & ML",
+      "url": "https://github.blog/ai-and-ml/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://github.blog/ai-and-ml/",
+      "probe": "10 items, newest 2026-10-20 on 2026-10-21"
+    },
+    {
+      "id": "google-ai",
+      "name": "Google AI blog",
+      "url": "https://blog.google/technology/ai/rss/",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://blog.google/technology/ai/"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://huggingface.co/blog"
+    },
+    {
+      "id": "langchain",
+      "name": "LangChain",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://blog.langchain.com/",
+      "url": "https://blog.langchain.dev/rss/",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no usable feed: /rss/ serves HTML, /feed/ answers 403"
+    },
+    {
+      "id": "meta-ai",
+      "name": "Meta AI",
+      "url": "https://ai.meta.com/blog/rss/",
+      "category": "lab",
+      "tier": 1,
+      "homepage": "https://ai.meta.com/blog/",
+      "enabled": false,
+      "probe": "HTTP 404 on 2026-10-11 - find their real feed URL before enabling",
+      "note": "feed.missing: https://ai.meta.com/blog/rss/ returned 404 at probe time; find their current feed before enabling"
+    },
+    {
+      "id": "meta-eng",
+      "name": "Meta Engineering",
+      "url": "https://engineering.fb.com/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://engineering.fb.com/",
+      "probe": "9 items, newest 2026-10-19 on 2026-10-21"
+    },
+    {
+      "id": "microsoft-ai",
+      "name": "Microsoft AI blog",
+      "url": "https://blogs.microsoft.com/ai/feed/",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://blogs.microsoft.com/ai/",
+      "enabled": false,
+      "probe": "HTTP 410 Gone on 2026-10-11 - feed retired",
+      "note": "feed.retired: returned 410 Gone; Microsoft moved its AI blog, find the new feed before enabling"
+    },
+    {
+      "id": "microsoft-research",
+      "name": "Microsoft Research",
+      "url": "https://www.microsoft.com/en-us/research/feed/",
+      "site": "https://www.microsoft.com/en-us/research/blog/",
+      "category": "lab",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
       "id": "mistral",
       "name": "Mistral AI",
       "url": "https://mistral.ai/news/rss",
@@ -364,31 +403,54 @@
       "probe": "100 items, newest 2026-10-21 on 2026-10-21"
     },
     {
-      "id": "apple-ml",
-      "name": "Apple Machine Learning Research",
-      "url": "https://machinelearning.apple.com/rss.xml",
+      "id": "ollama",
+      "name": "Ollama",
       "category": "lab",
       "tier": 2,
-      "homepage": "https://machinelearning.apple.com/",
-      "probe": "10 items, newest 2026-10-15 on 2026-10-21"
+      "homepage": "https://ollama.com/blog",
+      "url": "https://ollama.com/blog/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "feed exists but answers 403 to our user agent: /blog/rss.xml parsed 62 items with a browser UA"
     },
     {
-      "id": "meta-eng",
-      "name": "Meta Engineering",
-      "url": "https://engineering.fb.com/feed/",
+      "id": "openai",
+      "name": "OpenAI",
+      "url": "https://openai.com/news/rss.xml",
       "category": "lab",
-      "tier": 2,
-      "homepage": "https://engineering.fb.com/",
-      "probe": "9 items, newest 2026-10-19 on 2026-10-21"
+      "tier": 1,
+      "homepage": "https://openai.com/news/"
     },
     {
-      "id": "together-ai",
-      "name": "Together AI",
-      "url": "https://www.together.ai/blog/rss.xml",
+      "id": "perplexity",
+      "name": "Perplexity",
       "category": "lab",
       "tier": 2,
-      "homepage": "https://www.together.ai/blog",
-      "probe": "81 items, newest 2026-10-19 on 2026-10-21"
+      "homepage": "https://www.perplexity.ai/hub/blog",
+      "url": "https://www.perplexity.ai/hub/blog/feed",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /hub/blog/rss and /hub/blog/feed answer 403"
+    },
+    {
+      "id": "pytorch",
+      "name": "PyTorch",
+      "url": "https://pytorch.org/blog/feed.xml",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://pytorch.org/blog/",
+      "probe": "10 items, newest 2026-10-21 on 2026-10-21"
+    },
+    {
+      "id": "replicate",
+      "name": "Replicate",
+      "category": "lab",
+      "tier": 2,
+      "homepage": "https://replicate.com/blog",
+      "url": "https://replicate.com/blogrss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "feed is abandoned: /blog/rss returns 121 items, newest 15 April 2026"
     },
     {
       "id": "sakana",
@@ -439,266 +501,13 @@
       "probe": "10 items, newest 2026-10-21 on 2026-10-21"
     },
     {
-      "id": "github-ai",
-      "name": "GitHub AI & ML",
-      "url": "https://github.blog/ai-and-ml/feed/",
+      "id": "together-ai",
+      "name": "Together AI",
+      "url": "https://www.together.ai/blog/rss.xml",
       "category": "lab",
       "tier": 2,
-      "homepage": "https://github.blog/ai-and-ml/",
-      "probe": "10 items, newest 2026-10-20 on 2026-10-21"
-    },
-    {
-      "id": "pytorch",
-      "name": "PyTorch",
-      "url": "https://pytorch.org/blog/feed.xml",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://pytorch.org/blog/",
-      "probe": "10 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "ibm-research",
-      "name": "IBM Research",
-      "url": "https://research.ibm.com/rss",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://research.ibm.com/blog",
-      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "transformer-circuits",
-      "name": "Transformer Circuits",
-      "url": "https://transformer-circuits.pub/feed.xml",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://transformer-circuits.pub/",
-      "probe": "56 items, newest 2026-08-21 on 2026-10-21"
-    },
-    {
-      "id": "lilian-weng",
-      "name": "Lilian Weng",
-      "url": "https://lilianweng.github.io/index.xml",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://lilianweng.github.io/",
-      "probe": "53 items, newest 2026-07-04 on 2026-10-21"
-    },
-    {
-      "id": "the-gradient",
-      "name": "The Gradient",
-      "url": "https://thegradient.pub/rss/",
-      "category": "research",
-      "tier": 3,
-      "homepage": "https://thegradient.pub/",
-      "probe": "15 items, newest 2026-02-18 on 2026-10-21"
-    },
-    {
-      "id": "stanford-crfm",
-      "name": "Stanford CRFM",
-      "url": "https://crfm.stanford.edu/feed.xml",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://crfm.stanford.edu/",
-      "probe": "10 items, newest 2026-05-26 on 2026-10-21"
-    },
-    {
-      "id": "chinatalk",
-      "name": "ChinaTalk",
-      "url": "https://www.chinatalk.media/feed",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://www.chinatalk.media/",
-      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "ars-technica-ai",
-      "name": "Ars Technica AI",
-      "url": "https://arstechnica.com/ai/feed/",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://arstechnica.com/ai/",
-      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "interconnects",
-      "name": "Interconnects",
-      "url": "https://www.interconnects.ai/feed",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://www.interconnects.ai/",
-      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
-    },
-    {
-      "id": "latent-space",
-      "name": "Latent Space",
-      "url": "https://www.latent.space/feed",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://www.latent.space/",
-      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "one-useful-thing",
-      "name": "One Useful Thing",
-      "url": "https://www.oneusefulthing.org/feed",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://www.oneusefulthing.org/",
-      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
-    },
-    {
-      "id": "ai-snake-oil",
-      "name": "AI Snake Oil",
-      "url": "https://www.aisnakeoil.com/feed",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://www.aisnakeoil.com/",
-      "probe": "20 items, newest 2026-10-19 on 2026-10-21"
-    },
-    {
-      "id": "rundown-ai",
-      "name": "The Rundown AI",
-      "url": "https://www.therundown.ai/feed",
-      "category": "aggregator",
-      "tier": 3,
-      "homepage": "https://www.therundown.ai/",
-      "probe": "50 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "bens-bites",
-      "name": "Ben's Bites",
-      "url": "https://www.bensbites.com/feed",
-      "category": "aggregator",
-      "tier": 3,
-      "homepage": "https://www.bensbites.com/",
-      "probe": "20 items, newest 2026-10-20 on 2026-10-21"
-    },
-    {
-      "id": "techmeme",
-      "name": "Techmeme",
-      "url": "https://www.techmeme.com/feed.xml",
-      "category": "aggregator",
-      "tier": 3,
-      "homepage": "https://www.techmeme.com/",
-      "require": [
-        "artificial intelligence",
-        "machine learning",
-        "deep learning",
-        "language model*",
-        "neural network*",
-        "generative ai",
-        "llm*",
-        "gpt*",
-        "chatbot*",
-        "chatgpt",
-        "claude",
-        "gemini",
-        "openai",
-        "anthropic",
-        "deepmind",
-        "mistral",
-        "nvidia",
-        "transformer*",
-        "diffusion model*",
-        "agent*",
-        "inference",
-        "gpu*",
-        "superintelligence",
-        "agi",
-        "alignment",
-        "ai safety",
-        "robotics",
-        "computer vision"
-      ],
-      "probe": "15 items, newest 2026-10-21 on 2026-10-21"
-    },
-    {
-      "id": "ai2",
-      "name": "Ai2",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://allenai.org/blog",
-      "url": "https://allenai.org/blog/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /blog/rss.xml and /blog/feed.xml answer 403 to our user agent"
-    },
-    {
-      "id": "google-research",
-      "name": "Google Research",
-      "category": "research",
-      "tier": 1,
-      "homepage": "https://research.google/blog/",
-      "url": "https://research.google/blog/rss/",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /blog/rss/ answers 403; their old Blogspot feed is last updated March 2024"
-    },
-    {
-      "id": "metr",
-      "name": "METR",
-      "category": "research",
-      "tier": 1,
-      "homepage": "https://metr.org/",
-      "url": "https://metr.org/feed/",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /feed, /feed/ and /blog/feed/ answer 404"
-    },
-    {
-      "id": "epoch-ai",
-      "name": "Epoch AI",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://epoch.ai/",
-      "url": "https://epoch.ai/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /feed.xml, /blog/feed.xml and /rss.xml answer 404"
-    },
-    {
-      "id": "apollo",
-      "name": "Apollo Research",
-      "category": "research",
-      "tier": 2,
-      "homepage": "https://www.apolloresearch.ai/",
-      "url": "https://www.apolloresearch.ai/feed",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /feed and /rss.xml answer 404"
-    },
-    {
-      "id": "aisi",
-      "name": "UK AI Security Institute",
-      "category": "research",
-      "tier": 1,
-      "homepage": "https://www.aisi.gov.uk/",
-      "url": "https://www.aisi.gov.uk/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /feed.xml and /blog/feed.xml answer 404"
-    },
-    {
-      "id": "hf-papers",
-      "name": "Hugging Face Daily Papers",
-      "category": "paper",
-      "tier": 3,
-      "homepage": "https://huggingface.co/papers",
-      "url": "https://huggingface.co/papers/feed.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /papers/feed.xml answers 401"
-    },
-    {
-      "id": "the-batch",
-      "name": "The Batch",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://www.deeplearning.ai/the-batch/",
-      "url": "https://www.deeplearning.ai/blog/feed/",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /the-batch/feed/ and /blog/feed/ answer 404"
+      "homepage": "https://www.together.ai/blog",
+      "probe": "81 items, newest 2026-10-19 on 2026-10-21"
     },
     {
       "id": "vllm",
@@ -712,103 +521,24 @@
       "note": "no feed: /feed.xml and /rss.xml answer 404"
     },
     {
-      "id": "langchain",
-      "name": "LangChain",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://blog.langchain.com/",
-      "url": "https://blog.langchain.dev/rss/",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no usable feed: /rss/ serves HTML, /feed/ answers 403"
-    },
-    {
-      "id": "perplexity",
-      "name": "Perplexity",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://www.perplexity.ai/hub/blog",
-      "url": "https://www.perplexity.ai/hub/blog/feed",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /hub/blog/rss and /hub/blog/feed answer 403"
-    },
-    {
-      "id": "elevenlabs",
-      "name": "ElevenLabs",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://elevenlabs.io/blog",
-      "url": "https://elevenlabs.io/blog/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /blog/rss.xml answers 403"
-    },
-    {
-      "id": "cohere",
-      "name": "Cohere",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://cohere.com/blog",
-      "url": "https://cohere.com/blog/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "no feed: /blog/rss.xml and /blog/feed answer 404"
-    },
-    {
-      "id": "ollama",
-      "name": "Ollama",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://ollama.com/blog",
-      "url": "https://ollama.com/blog/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "feed exists but answers 403 to our user agent: /blog/rss.xml parsed 62 items with a browser UA"
-    },
-    {
-      "id": "ahead-of-ai",
-      "name": "Ahead of AI",
-      "category": "commentary",
-      "tier": 2,
-      "homepage": "https://magazine.sebastianraschka.com/",
-      "url": "https://magazine.sebastianraschka.com/feed",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "feed is malformed: /feed is unclosed CDATA and does not parse"
-    },
-    {
-      "id": "replicate",
-      "name": "Replicate",
-      "category": "lab",
-      "tier": 2,
-      "homepage": "https://replicate.com/blog",
-      "url": "https://replicate.com/blogrss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "feed is abandoned: /blog/rss returns 121 items, newest 15 April 2026"
-    },
-    {
-      "id": "semianalysis",
-      "name": "SemiAnalysis",
-      "category": "press",
-      "tier": 2,
-      "homepage": "https://semianalysis.com/",
-      "url": "https://semianalysis.com/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "feed is stale: /feed/ newest item 16 September 2025, the rest is paywalled"
-    },
-    {
-      "id": "distill",
-      "name": "Distill",
-      "category": "research",
+      "id": "arxiv-cs-ai",
+      "name": "arXiv cs.AI",
+      "url": "https://rss.arxiv.org/rss/cs.AI",
+      "category": "paper",
       "tier": 3,
-      "homepage": "https://distill.pub/",
-      "url": "https://distill.pub/rss.xml",
-      "enabled": false,
-      "probe": "no usable feed on 2026-10-21",
-      "note": "closed: /rss.xml is an archive ending September 2021"
+      "homepage": "https://arxiv.org/list/cs.AI/recent",
+      "probe": "473 items, newest 2026-10-21 on 2026-10-21",
+      "note": "probe failed; see the fetch log",
+      "require": [
+        "artificial general intelligence",
+        "superintelligence",
+        "mechanistic interpretability",
+        "ai alignment",
+        "ai safety",
+        "frontier model*",
+        "emergent abilit*",
+        "interpretability"
+      ]
     },
     {
       "id": "arxiv-cs-cl",
@@ -833,15 +563,373 @@
       "note": "not added: 817 items a day, wider scope than cs.AI which is already filtered"
     },
     {
-      "id": "llamacpp",
-      "name": "llama.cpp releases",
-      "category": "community",
+      "id": "hf-papers",
+      "name": "Hugging Face Daily Papers",
+      "category": "paper",
       "tier": 3,
-      "url": "https://github.com/ggml-org/llama.cpp/releases.atom",
-      "homepage": "https://github.com/ggml-org/llama.cpp/releases",
+      "homepage": "https://huggingface.co/papers",
+      "url": "https://huggingface.co/papers/feed.xml",
       "enabled": false,
-      "probe": "10 items on 2026-10-21, but the titles carry nothing",
-      "note": "release tags only: the atom titles are build numbers like b11799, which is not a headline a wire can show"
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /papers/feed.xml answers 401"
+    },
+    {
+      "id": "cognitiverevolution",
+      "name": "The Cognitive Revolution",
+      "url": "https://feeds.megaphone.fm/RINTP3108857801",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.cognitiverevolution.ai/",
+      "fetchArticle": false,
+      "note": "AI founders and researchers at length; every episode with a long description (checked 2026-10-24)"
+    },
+    {
+      "id": "dwarkesh",
+      "name": "Dwarkesh Podcast",
+      "url": "https://www.dwarkesh.com/feed",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.dwarkesh.com/",
+      "fetchArticle": false,
+      "note": "long interviews with lab researchers and economists (checked 2026-10-24)"
+    },
+    {
+      "id": "hardfork",
+      "name": "Hard Fork",
+      "url": "https://feeds.simplecast.com/l2i9YnTd",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.nytimes.com/column/hard-fork",
+      "fetchArticle": false,
+      "note": "technology and AI, every episode with a 1-2 kB description (checked 2026-10-24)"
+    },
+    {
+      "id": "lastweekinai",
+      "name": "Last Week in AI",
+      "url": "https://lastweekin.ai/feed",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://lastweekin.ai/",
+      "fetchArticle": false,
+      "note": "weekly roundup; audio episodes only - the feed also carries text posts (checked 2026-10-24)"
+    },
+    {
+      "id": "latentspace",
+      "name": "Latent Space",
+      "url": "https://api.substack.com/feed/podcast/1084089.rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.latent.space/podcast",
+      "fetchArticle": false,
+      "note": "engineers building with models; 239 of 284 episodes carry a WebVTT transcript (checked 2026-10-24)"
+    },
+    {
+      "id": "nopriors",
+      "name": "No Priors",
+      "url": "https://feeds.megaphone.fm/nopriors",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.no-priors.com/",
+      "fetchArticle": false,
+      "note": "Sarah Guo and Elad Gil on where the industry is going (checked 2026-10-24)"
+    },
+    {
+      "id": "practicalai",
+      "name": "Practical AI",
+      "url": "https://changelog.com/practicalai/feed",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://changelog.com/practicalai",
+      "fetchArticle": false,
+      "note": "practitioners' show; 73 of 379 episodes carry a transcript, the rest long descriptions (checked 2026-10-24)"
+    },
+    {
+      "id": "twiml",
+      "name": "TWIML AI Podcast",
+      "url": "https://twimlai.com/feed/podcast/",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://twimlai.com/podcast/",
+      "fetchArticle": false,
+      "note": "research-heavy interview show, 512 of 799 episodes have a full description (checked 2026-10-24)"
+    },
+    {
+      "id": "aibusiness",
+      "name": "AI Business",
+      "url": "https://aibusiness.com/rss.xml",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://aibusiness.com/"
+    },
+    {
+      "id": "ars-technica",
+      "name": "Ars Technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://arstechnica.com/ai/"
+    },
+    {
+      "id": "ars-technica-ai",
+      "name": "Ars Technica AI",
+      "url": "https://arstechnica.com/ai/feed/",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://arstechnica.com/ai/",
+      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
+    },
+    {
+      "id": "chinatalk",
+      "name": "ChinaTalk",
+      "url": "https://www.chinatalk.media/feed",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.chinatalk.media/",
+      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
+    },
+    {
+      "id": "marktechpost",
+      "name": "MarkTechPost",
+      "url": "https://www.marktechpost.com/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://www.marktechpost.com/"
+    },
+    {
+      "id": "mit-tech-review-ai",
+      "name": "MIT Technology Review AI",
+      "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.technologyreview.com/topic/artificial-intelligence/"
+    },
+    {
+      "id": "semianalysis",
+      "name": "SemiAnalysis",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://semianalysis.com/",
+      "url": "https://semianalysis.com/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "feed is stale: /feed/ newest item 16 September 2025, the rest is paywalled"
+    },
+    {
+      "id": "smol-ai-news",
+      "name": "AI News (smol.ai)",
+      "url": "https://news.smol.ai/rss.xml",
+      "site": "https://news.smol.ai/",
+      "category": "press",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "techcrunch-ai",
+      "name": "TechCrunch AI",
+      "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://techcrunch.com/category/artificial-intelligence/"
+    },
+    {
+      "id": "the-batch",
+      "name": "The Batch",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.deeplearning.ai/the-batch/",
+      "url": "https://www.deeplearning.ai/blog/feed/",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /the-batch/feed/ and /blog/feed/ answer 404"
+    },
+    {
+      "id": "the-decoder",
+      "name": "The Decoder",
+      "url": "https://the-decoder.com/feed/",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://the-decoder.com/"
+    },
+    {
+      "id": "unite-ai",
+      "name": "Unite.AI",
+      "url": "https://www.unite.ai/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://www.unite.ai/"
+    },
+    {
+      "id": "venturebeat-ai",
+      "name": "VentureBeat AI",
+      "url": "https://venturebeat.com/category/ai/feed/",
+      "category": "press",
+      "tier": 3,
+      "homepage": "https://venturebeat.com/category/ai/",
+      "enabled": false,
+      "probe": "HTTP 429 on 2026-10-11 - rate limited; retry with a browser-ish UA before enabling",
+      "note": "rate limited (429) at probe time; retry with a slower schedule before enabling"
+    },
+    {
+      "id": "verge-ai",
+      "name": "The Verge AI",
+      "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.theverge.com/ai-artificial-intelligence"
+    },
+    {
+      "id": "wired-ai",
+      "name": "Wired AI",
+      "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+      "category": "press",
+      "tier": 2,
+      "homepage": "https://www.wired.com/tag/artificial-intelligence/"
+    },
+    {
+      "id": "aisi",
+      "name": "UK AI Security Institute",
+      "category": "research",
+      "tier": 1,
+      "homepage": "https://www.aisi.gov.uk/",
+      "url": "https://www.aisi.gov.uk/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /feed.xml and /blog/feed.xml answer 404"
+    },
+    {
+      "id": "apollo",
+      "name": "Apollo Research",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://www.apolloresearch.ai/",
+      "url": "https://www.apolloresearch.ai/feed",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /feed and /rss.xml answer 404"
+    },
+    {
+      "id": "bair",
+      "name": "BAIR Blog",
+      "url": "https://bair.berkeley.edu/blog/feed.xml",
+      "site": "https://bair.berkeley.edu/blog/",
+      "category": "research",
+      "tier": 2,
+      "enabled": true,
+      "note": "verified by probe: items with links and dates"
+    },
+    {
+      "id": "distill",
+      "name": "Distill",
+      "category": "research",
+      "tier": 3,
+      "homepage": "https://distill.pub/",
+      "url": "https://distill.pub/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "closed: /rss.xml is an archive ending September 2021"
+    },
+    {
+      "id": "epoch-ai",
+      "name": "Epoch AI",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://epoch.ai/",
+      "url": "https://epoch.ai/rss.xml",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /feed.xml, /blog/feed.xml and /rss.xml answer 404"
+    },
+    {
+      "id": "google-research",
+      "name": "Google Research",
+      "category": "research",
+      "tier": 1,
+      "homepage": "https://research.google/blog/",
+      "url": "https://research.google/blog/rss/",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /blog/rss/ answers 403; their old Blogspot feed is last updated March 2024"
+    },
+    {
+      "id": "ibm-research",
+      "name": "IBM Research",
+      "url": "https://research.ibm.com/rss",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://research.ibm.com/blog",
+      "probe": "20 items, newest 2026-10-21 on 2026-10-21"
+    },
+    {
+      "id": "ieee-ai",
+      "name": "IEEE Spectrum AI",
+      "url": "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://spectrum.ieee.org/artificial-intelligence"
+    },
+    {
+      "id": "lilian-weng",
+      "name": "Lilian Weng",
+      "url": "https://lilianweng.github.io/index.xml",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://lilianweng.github.io/",
+      "probe": "53 items, newest 2026-07-04 on 2026-10-21"
+    },
+    {
+      "id": "metr",
+      "name": "METR",
+      "category": "research",
+      "tier": 1,
+      "homepage": "https://metr.org/",
+      "url": "https://metr.org/feed/",
+      "enabled": false,
+      "probe": "no usable feed on 2026-10-21",
+      "note": "no feed: /feed, /feed/ and /blog/feed/ answer 404"
+    },
+    {
+      "id": "mit-news-ai",
+      "name": "MIT News AI",
+      "url": "https://news.mit.edu/rss/topic/artificial-intelligence2",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://news.mit.edu/topic/artificial-intelligence2"
+    },
+    {
+      "id": "stanford-crfm",
+      "name": "Stanford CRFM",
+      "url": "https://crfm.stanford.edu/feed.xml",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://crfm.stanford.edu/",
+      "probe": "10 items, newest 2026-05-26 on 2026-10-21"
+    },
+    {
+      "id": "the-gradient",
+      "name": "The Gradient",
+      "url": "https://thegradient.pub/rss/",
+      "category": "research",
+      "tier": 3,
+      "homepage": "https://thegradient.pub/",
+      "probe": "15 items, newest 2026-02-18 on 2026-10-21"
+    },
+    {
+      "id": "transformer-circuits",
+      "name": "Transformer Circuits",
+      "url": "https://transformer-circuits.pub/feed.xml",
+      "category": "research",
+      "tier": 2,
+      "homepage": "https://transformer-circuits.pub/",
+      "probe": "56 items, newest 2026-08-21 on 2026-10-21"
     }
   ]
 }

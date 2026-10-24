@@ -331,6 +331,25 @@ def truncate(text: str, n: int) -> str:
 CSS = """
   /* The wire had no h1 at all: a page with no h1 has no title a screen reader or a crawler
      can name it by. This keeps the drawn page exactly as designed. */
+  /* the listening lane and the player: same palette, nothing new to learn */
+  .listen-row { display:grid; grid-template-columns:18px 1fr; gap:2px 8px; padding:8px 0;
+                border-bottom:1px solid var(--line); text-decoration:none; }
+  .listen-row:last-of-type { border-bottom:0; }
+  .listen-row .play { grid-row:span 2; color:var(--upsy); font-size:12px; line-height:1.5; }
+  .listen-row .lt { color:var(--fg); font-size:13px; line-height:1.35; }
+  .listen-row:hover .lt { color:var(--link); }
+  .listen-row .lm { color:var(--dim); font-size:11px; }
+  audio.player { width:100%; margin:14px 0 4px; filter:saturate(.75); }
+  .listen-list { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  .listen-list h1 { font-size:22px; margin:0 0 6px; }
+  .listen-item { border-top:1px solid var(--line); padding:16px 0; }
+  .listen-item h2 { font-size:16px; margin:6px 0; line-height:1.3; }
+  .listen-item h2 a { color:var(--fg); text-decoration:none; }
+  .listen-item h2 a:hover { color:var(--link); }
+  .listen-item .dek { color:var(--dim); font-size:13px; margin:0 0 8px; }
+  .listen-play { font-size:12px; color:var(--upsy); text-decoration:none; }
+  .badge { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--upsy);
+           border:1px solid var(--upsy); border-radius:3px; padding:0 4px; }
   .vh { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
         clip-path:inset(50%); white-space:nowrap; border:0; }
   :root {
@@ -523,6 +542,7 @@ HEADER = """<header class="top">
     <span class="hot">{breaking} breaking</span>
     <span><b>{upsy}</b> anomalies</span>
     <span>updated {updated}</span>
+    <span><a href="/listen.html">listening</a></span>
     <span><a href="/sources.html">sources</a></span>
   </div>
   <button id="net-toggle" class="net-toggle" type="button" aria-expanded="false"
@@ -772,10 +792,31 @@ SIGNAL_JS = """<script>
 </script>"""
 
 
+def render_listen_lane(episodes: list[dict], now: datetime, limit: int = 3) -> str:
+    """The front page's listening strip: three newest episodes, each one a link to its own page."""
+    if not episodes:
+        return ""
+    rows = []
+    for episode in episodes[:limit]:
+        length = duration_label(episode.get("duration"))
+        meta_bits = " &middot; ".join(bit for bit in (esc(episode["sourceName"]), esc(length),
+                                                      age(episode.get("published"), now) + " ago") if bit)
+        rows.append(f'<a class="listen-row" href="/s/{esc(episode["id"])}/">'
+                    f'<span class="play" aria-hidden="true">&#9654;</span>'
+                    f'<span class="lt">{esc(truncate(episode["title"], 78))}</span>'
+                    f'<span class="lm">{meta_bits}</span></a>')
+    return ('<section class="listen">\n      <h3>listening</h3>\n      '
+            + "\n      ".join(rows)
+            + f'\n      <p class="brief"><a href="/listen.html">every episode and how to play it</a></p>\n    </section>')
+
+
 def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     items = data["items"]
     counts = data["counts"]
-    rows = "\n".join(chip_row(i, now, set()) for i in items[:INDEX_ROWS])
+    # The stream is stories. An episode in the stream would be a row with no player, in a list that
+    # sorts by freshness - so the newest episode of the week would push a breaking story down.
+    stories = stories_of(items)
+    rows = "\n".join(chip_row(i, now, set()) for i in stories[:INDEX_ROWS])
     anomalies = render_anomalies(moments, items, now)
     # Every source, not a top slice: the panel is the filter as well as the list. The number beside a
     # source is what it contributed to *this* build, not the lifetime total the health record keeps -
@@ -807,14 +848,16 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
                            upsy=counts["upsy"], updated=age(data["generated"], now))
     drawer = NET_DRAWER.format(net_rows=net_rows, total=len(meta["health"]))
+    listen_lane = render_listen_lane(episodes_of(items), now, limit=3)
     return f"""{head}<h1 class="vh">upsy.si \u2014 a live wire on superintelligence</h1>{header}{drawer}{FILTER_BAR}
 <span id="top-mark" aria-hidden="true"></span>
 <main>
   <section class="rows" id="stream">
 {rows}
-    <div class="more"><button id="load-more" type="button">load {max(0, len(items) - INDEX_ROWS)} older stories</button></div>
+    <div class="more"><button id="load-more" type="button">load {max(0, len(stories) - INDEX_ROWS)} older stories</button></div>
   </section>
   <aside>
+    {listen_lane}
     <section>
       <h3>upsy moments</h3>
       {anomalies}
@@ -950,6 +993,51 @@ def text_to_html(text: str) -> str:
     return body
 
 
+def duration_label(seconds: int) -> str:
+    """"1 h 04 min", "48 min" - a length a reader can judge, not a number of seconds."""
+    try:
+        seconds = int(seconds or 0)
+    except (TypeError, ValueError):
+        return ""
+    if seconds <= 0:
+        return ""
+    hours, minutes = divmod(seconds // 60, 60)
+    if hours and minutes:
+        return f"{hours} h {minutes:02d} min"
+    if hours:
+        return f"{hours} h"
+    return f"{minutes or 1} min"
+
+
+def episodes_of(items: list[dict]) -> list[dict]:
+    """The podcast episodes on the wire, newest first."""
+    return sorted((i for i in items if i.get("kind") == "podcast" and i.get("audio")),
+                  key=lambda i: i.get("published") or "", reverse=True)
+
+
+def stories_of(items: list[dict]) -> list[dict]:
+    """Everything that is news. Episodes have their own lane and never enter the breaking ticker."""
+    return [i for i in items if i.get("kind") != "podcast"]
+
+
+def player_html(item: dict) -> str:
+    """The player: a native audio element, so nothing here is a third party's tracker.
+
+    `preload="none"` means the reader's browser asks the podcast's own host for the file only when
+    they press play - which is the whole reason this is not an embedded player from a platform.
+    """
+    if item.get("kind") != "podcast" or not item.get("audio"):
+        return ""
+    credits = [esc(item.get("sourceName") or "")]
+    length = duration_label(item.get("duration"))
+    if length:
+        credits.append(esc(length))
+    if item.get("transcript"):
+        credits.append(f'<a href="{esc(item["transcript"])}" rel="noopener">the show&#39;s own transcript</a>')
+    return (f'<audio class="player" controls preload="none" src="{esc(item["audio"])}"></audio>\n'
+            f'    <div class="credit">{" &middot; ".join(credits)}</div>')
+
+
 def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -> str:
     # The social card points at our own copy, so a preview never depends on the publisher's CDN.
     card = picture_of(item)
@@ -981,8 +1069,11 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         f'<a href="/s/{esc(r["id"])}/">{esc(truncate(r["title"], 96))} <span class="num">({esc(r["sourceName"])})</span></a>'
         for r in related
     ) or "<span>no related items yet</span>"
+    is_episode = item.get("kind") == "podcast"
+    cta_label = (f"the episode at {esc(item['sourceName'])}" if is_episode
+                 else f"read the original at {esc(item['sourceName'])}")
     ld = json.dumps({
-        "@context": "https://schema.org", "@type": "NewsArticle",
+        "@context": "https://schema.org", "@type": "PodcastEpisode" if is_episode else "NewsArticle",
         "headline": truncate(item["title"], 110),
         "datePublished": item.get("published") or "",
         "dateModified": data_timestamp(),
@@ -990,16 +1081,20 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         "image": [SITE_URL + (item.get("imageLocal") or item["image"])] if item.get("image") else [],
         "publisher": {"@type": "Organization", "name": SITE_NAME, "url": SITE_URL},
         "isBasedOn": item["url"],
+        **({"associatedMedia": {"@type": "AudioObject", "contentUrl": item["audio"]},
+            "partOfSeries": {"@type": "PodcastSeries", "name": item["sourceName"]}}
+           if is_episode and item.get("audio") else {}),
     }, ensure_ascii=False)
     return f"""{head}<main>
   <div class="story">
     <div class="kicker">{''.join(tags)}<span>{age(item.get('published'), now)} ago</span><span>energy {item['score']:.0f}</span></div>
     <h1>{esc(item['title'])}</h1>
+    {player_html(item)}
     {lead}
     <div class="body">{body}</div>
-    <a class="cta" href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">read the original at {esc(item['sourceName'])} &rarr;</a>
+    <a class="cta" href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">{cta_label} &rarr;</a>
     {note}
-    <div class="related"><h3>more from the stream</h3>
+    <div class="related"><h3>{'more listening' if is_episode else 'more from the stream'}</h3>
       {related_html}
       <a href="/">&larr; back to upsy.si</a>
     </div>
@@ -1009,6 +1104,54 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
 <script type="application/ld+json">{ld}</script>
 </body></html>
 """
+
+
+def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
+    """Every episode on the wire, newest first, each one leading to a page with a player on it.
+
+    The list itself carries no audio elements: a page with two hundred players on it asks the
+    reader's browser to build two hundred controls, and the publisher's host to be referenced two
+    hundred times before anything is played.
+    """
+    episodes = episodes_of(items)
+    rows = []
+    for episode in episodes:
+        length = duration_label(episode.get("duration"))
+        badges = ['<span class="badge">transcript</span>'] if episode.get("transcript") else []
+        when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
+        rows.append(f'<article class="listen-item">\n'
+                    f'      <div class="kicker"><span>{esc(episode["sourceName"])}</span>'
+                    f'<span>{esc(when)}</span>' + (f'<span>{esc(length)}</span>' if length else "")
+                    + "".join(badges) + '</div>\n'
+                    f'      <h2><a href="/s/{esc(episode["id"])}/">{esc(episode["title"])}</a></h2>\n'
+                    f'      <p class="dek">{esc(truncate(episode.get("summary") or "", 240))}</p>\n'
+                    f'      <a class="listen-play" href="/s/{esc(episode["id"])}/">play on its page</a>\n'
+                    f'    </article>')
+    head = BASE_HEAD.format(
+        editor=esc(editor_note(moments)),
+        shots=esc(shot_note()),
+        title="Listening | upsy.si",
+        description=("AI podcasts worth the time, each with a description you can read before you press "
+                     "play and a player that asks the publisher's host for the file only when you do."),
+        canonical=f"{SITE_URL}/listen.html", og_type="website", site_name=SITE_NAME,
+        og_title="Listening | upsy.si",
+        og_description=f"{len(episodes)} episodes from {len({e['sourceName'] for e in episodes})} shows.",
+        og_image="", twitter_card="summary", extra_meta="", css=CSS)
+    header = HEADER.format(sources=len({e["sourceName"] for e in episodes}), breaking=0,
+                           upsy=len(episodes), updated=age(data_timestamp(), now))
+    body = "\n    ".join(rows) or "<p>No episodes on the wire yet.</p>"
+    return (f"""{head}<h1 class="vh">upsy.si \u2014 listening</h1>{header}
+<main>
+  <div class="listen-list">
+    <h1>listening</h1>
+    <p class="brief">Podcast episodes from shows that publish a transcript or a description worth
+    reading. The player is the browser's own, and the file is asked for only when you press play.</p>
+    {body}
+  </div>
+</main>
+{footer(len(episodes), len({e['sourceName'] for e in episodes}))}
+</body></html>
+""")
 
 
 def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> str:
@@ -1077,9 +1220,12 @@ def build_feed(items: list[dict], now: datetime) -> str:
 """
 
 
-def build_sitemap(items: list[dict], now: datetime) -> str:
+def build_sitemap(items: list[dict], now: datetime, extra_pages: tuple[str, ...] = ("/listen.html",)) -> str:
     urls = [f"  <url><loc>{SITE_URL}/</loc><lastmod>{now.date().isoformat()}</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>",
             f"  <url><loc>{SITE_URL}/sources.html</loc><lastmod>{now.date().isoformat()}</lastmod><priority>0.4</priority></url>"]
+    for page in extra_pages:
+        urls.append(f"  <url><loc>{SITE_URL}{page}</loc><lastmod>{now.date().isoformat()}</lastmod>"
+                    f"<changefreq>daily</changefreq><priority>0.5</priority></url>")
     for item in items:
         lastmod = (item.get("published") or "")[:10]
         urls.append(f'  <url><loc>{SITE_URL}/s/{esc(item["id"])}/</loc>{f"<lastmod>{lastmod}</lastmod>" if lastmod else ""}<priority>0.6</priority></url>')
@@ -1120,6 +1266,7 @@ def main() -> int:
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
+    (SITE / "listen.html").write_text(build_listen(items, now, moments), encoding="utf-8")
     for item in items:
         related = [i for i in items if i["id"] != item["id"] and i["source"] == item["source"]][:3]
         if len(related) < 3:
@@ -1131,13 +1278,27 @@ def main() -> int:
     # hundred items and both loops used to stop at three, so anything past three hundred - a slow,
     # curated source sits exactly there - was linked and advertised as a path that did not exist.
     # The stream page loads older stories and checks for new builds from these two files.
+    # The stream is stories. An episode in "load more" would arrive as a row with no player, so
+    # episodes are served beside it in their own file - which is also the file a machine should read
+    # when it wants to know what is worth listening to.
     (SITE / "data" / "news.json").write_text(
         json.dumps({"generated": data["generated"], "counts": data["counts"],
                     "items": [{"id": i["id"], "title": esc(i["title"]), "url": esc(i["url"]),
                                "sourceName": esc(i["sourceName"]), "summary": esc(truncate(i["summary"], 200)),
                                "image": esc(picture_of(i)), "score": i["score"], "breaking": i["breaking"],
                                "src": src_key(i["sourceName"]),
-                               "upsy": i["upsy"], "age": age(i["published"], now)} for i in items]},
+                               "upsy": i["upsy"], "age": age(i["published"], now)}
+                              for i in stories_of(items)]},
+                   ensure_ascii=False), encoding="utf-8")
+    (SITE / "data" / "episodes.json").write_text(
+        json.dumps({"generated": data["generated"],
+                    "items": [{"id": i["id"], "title": esc(i["title"]), "show": esc(i["sourceName"]),
+                               "page": f"{SITE_URL}/s/{i['id']}/", "url": esc(i["url"]),
+                               "audio": esc(i["audio"]), "audioType": esc(i["audioType"]),
+                               "durationSeconds": i["duration"], "transcript": esc(i["transcript"]),
+                               "transcriptType": esc(i["transcriptType"]), "published": i["published"],
+                               "summary": esc(truncate(i.get("summary") or "", 400))}
+                              for i in episodes_of(items)]},
                    ensure_ascii=False), encoding="utf-8")
     (SITE / "data" / "meta.json").write_text(
         json.dumps({"generated": data["generated"], "counts": data["counts"]}, ensure_ascii=False), encoding="utf-8")
@@ -1152,7 +1313,8 @@ def main() -> int:
     pruned = prune_unused_pictures()
     pages = len(list((SITE / "s").iterdir()))
     print(f"pruned {pruned} unused picture(s)")
-    print(f"built _site/: index.html ({min(len(items), INDEX_ROWS)} rows), {pages} story pages, "
+    print(f"built _site/: index.html ({min(len(stories_of(items)), INDEX_ROWS)} rows), {pages} story pages "
+          f"({len(episodes_of(items))} episodes), listen.html, "
           f"feed.xml, sitemap.xml, sources.html, {cached} cached image(s), {moment_pictures} moment picture(s), "
           f"{shot_pictures} screenshot(s)")
     return 0

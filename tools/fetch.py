@@ -199,7 +199,9 @@ def fetch(url: str, etag: str | None = None, modified: str | None = None) -> tup
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            return response.status, response.read(4_000_000), dict(response.headers)
+            # 9 MB. A podcast feed carries whole episode descriptions and some run to 4.5 MB
+            # (measured: The Cognitive Revolution), so the old 4 MB cut them off mid-tag.
+            return response.status, response.read(9_000_000), dict(response.headers)
     except urllib.error.HTTPError as exc:
         if exc.code == 304:
             return 304, b"", dict(exc.headers or {})
@@ -381,6 +383,56 @@ def _parse(raw: str | None) -> datetime | None:
     return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
 
 
+def duration_seconds(value: str) -> int:
+    """How long the episode runs, from the three shapes feeds actually publish.
+
+    "3723", "62:03" and "1:02:03" all appear in the wild (iTunes allowed all three), and a wrong
+    read here shows the reader a lie about how much of their life an episode wants.
+    """
+    digits = [part for part in str(value or "").replace(",", ":").split(":") if part.strip().isdigit()]
+    if not digits:
+        return 0
+    total = 0
+    for part in digits:
+        total = total * 60 + int(part)
+    return total
+
+
+def podcast_extras(node: ET.Element) -> dict:
+    """What an episode carries that a story does not: audio, its length, and a transcript.
+
+    Only an enclosure declared as audio counts. Feeds also put pictures in enclosures, and a player
+    pointed at a JPEG is a control that does nothing. A transcript is a URL and its type; the text
+    itself is fetched later and deliberately kept out of everything the model sees.
+    """
+    extras: dict = {}
+    for child in descendants(node):
+        tag = local(child.tag)
+        if tag == "enclosure":
+            kind = (child.get("type") or "").strip().lower()
+            url = (child.get("url") or "").strip()
+            if url.startswith("http") and kind.startswith("audio") and "audio" not in extras:
+                extras["audio"] = url
+                extras["audioType"] = kind
+                size = (child.get("length") or "").strip()
+                if size.isdigit():
+                    extras["audioBytes"] = int(size)
+        elif tag == "duration" and "duration" not in extras:
+            seconds = duration_seconds(child.text or "")
+            if seconds:
+                extras["duration"] = seconds
+        elif tag == "transcript" and "transcript" not in extras:
+            url = (child.get("url") or "").strip()
+            if url.startswith("http"):
+                extras["transcript"] = url
+                extras["transcriptType"] = (child.get("type") or "").strip().lower()
+        elif tag == "episode" and "episode" not in extras:
+            value = (child.text or "").strip()
+            if value.isdigit():
+                extras["episode"] = int(value)
+    return extras
+
+
 def image_from_node(node: ET.Element) -> str:
     for child in descendants(node):
         tag = local(child.tag)
@@ -463,9 +515,49 @@ def reusable(items: list[dict]) -> list[dict]:
     return [item for item in items if is_article_url(item.get("link") or "")]
 
 
+def episode_fields(source: dict, raw: dict) -> dict:
+    """The fields that make an item an episode, or nothing at all.
+
+    A podcast's description is the episode's page text, so it is kept whole (up to 4,000 characters)
+    rather than trimmed to a teaser - the wire's rule that a summary is a second line does not apply
+    to something whose description is the only text a reader gets before pressing play.
+    """
+    # Every item carries these whether or not it is an episode: a field that exists only on some items
+    # is a KeyError waiting for the day a podcast is the newest thing on the wire.
+    fields = {"kind": "podcast" if source.get("kind") == "podcast" else "news",
+              "audio": raw.get("audio", "") if source.get("kind") == "podcast" else "",
+              "audioType": raw.get("audioType", "") if source.get("kind") == "podcast" else "",
+              "duration": raw.get("duration", 0) if source.get("kind") == "podcast" else 0,
+              "transcript": raw.get("transcript", "") if source.get("kind") == "podcast" else "",
+              "transcriptType": raw.get("transcriptType", "") if source.get("kind") == "podcast" else ""}
+    if source.get("kind") != "podcast":
+        return fields
+    if raw.get("audioBytes"):
+        fields["audioBytes"] = raw["audioBytes"]
+    if raw.get("episode"):
+        fields["episode"] = raw["episode"]
+    # An episode's description *is* its page text: there is no article to read behind it, and the
+    # 600-character rule that keeps a news teaser out of the body would leave an episode page with one
+    # line and a "summary only" notice that points at nowhere.
+    description = (raw.get("summary") or "").strip()
+    if description:
+        fields["content"] = description[:4000]
+        fields["contentFrom"] = "feed"
+    return fields
+
+
 def parse_feed(body: bytes, base: str = "") -> list[dict]:
     text = body.decode("utf-8", "replace").lstrip("\ufeff \r\n\t")
-    root = ET.fromstring(text)
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        # A body cut off mid-tag is usually one we stopped reading, not a broken feed: keep every
+        # complete item and drop the tail, rather than declaring the whole source dead.
+        cut = max(text.rfind("</item>"), text.rfind("</entry>"))
+        if cut < 0:
+            raise
+        root = ET.fromstring(text[:cut + len("</item>")] + "</channel></rss>"
+                             if text[cut:cut + 7] == "</item>" else text[:cut + len("</entry>")] + "</feed>")
     nodes: list[ET.Element] = []
     for candidate in root.iter():
         if local(candidate.tag) in ("item", "entry"):
@@ -488,19 +580,28 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
             if is_article_url(cleaned):
                 link = cleaned
                 break
-        if not title or not link:
+        audio = podcast_extras(node).get("audio", "")
+        if not title:
+            continue
+        if not link:
+            # Some shows publish no <link> at all (Megaphone puts only a guid and the enclosure in
+            # the item). For an episode the audio file is a real destination, and dropping the item
+            # would silently lose the show.
+            link = audio
+        if not link:
             continue
         raw_summary = first_text(node, ("encoded", "summary", "description", "content"))
         full_text = first_text(node, ("encoded",))
         items.append({
             "title": title,
-            "link": resolve_link(node, link, base),
+            "link": link if link == audio else resolve_link(node, link, base),
             "published": parse_date(node),
             "author": strip_html(first_text(node, ("author", "creator", "name"))),
             "summary": strip_html(raw_summary)[:1200],
             "content": strip_html(full_text) if full_text else "",
             "has_full_text": bool(full_text),
             "image": image_from_node(node),
+            **podcast_extras(node),
         })
     return items
 
@@ -765,6 +866,7 @@ def run(args: argparse.Namespace) -> int:
                 "image": raw["image"],
                 "aiTerms": ai_terms[:6],
                 "fetchArticle": source.get("fetchArticle", defaults.get("fetchArticle", True)),
+                **episode_fields(source, raw),
             })
         health.append({
             "id": source["id"], "name": source["name"], "status": status, "items": len(items),
@@ -938,6 +1040,11 @@ def run(args: argparse.Namespace) -> int:
             "aiTerms": item.get("aiTerms", []),
             "promo": item.get("promo", False), "question": item.get("question", False),
             "upsyWhy": item.get("upsyWhy", ""),
+            # An episode is an item with audio. These are published for every item, empty on the ones
+            # that are not episodes, so nothing downstream has to ask whether the key exists.
+            "kind": item.get("kind", "news"), "audio": item.get("audio", ""),
+            "audioType": item.get("audioType", ""), "duration": item.get("duration", 0),
+            "transcript": item.get("transcript", ""), "transcriptType": item.get("transcriptType", ""),
         })
     DATA.joinpath("news.json").write_text(json.dumps({
         "generated": now.isoformat(timespec="seconds"),

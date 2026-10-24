@@ -59,8 +59,10 @@ def credentials() -> tuple[str, str, str, str]:
 
 def candidates(items: list[dict], limit: int = CANDIDATES) -> list[dict]:
     """What the editor is allowed to choose from: recent, ranked, and actually about the topic."""
-    nominated = [i for i in items if i["upsy"] and not i.get("promo")]
-    scored = [i for i in items if not i.get("promo") and not i.get("question")]
+    # An episode is not a moment: it happened over an hour, and the editor is choosing events that
+    # happened today. Transcripts stay out of the prompt entirely - one of them is 22,000 words.
+    nominated = [i for i in items if i["upsy"] and not i.get("promo") and i.get("kind") != "podcast"]
+    scored = [i for i in items if not i.get("promo") and not i.get("question") and i.get("kind") != "podcast"]
     chosen: list[dict] = []
     for group in (nominated, scored):
         for item in group:
