@@ -477,15 +477,36 @@ CSS = """
   footer { border-top:1px solid var(--line); padding:14px 18px; font-size:11px; color:var(--dim2); display:flex; gap:18px; flex-wrap:wrap; }
   footer a:hover { color:var(--fg); }
   /* story page */
+  /* A story page is one column. It inherited the front page's grid (story + 320px rail), so the
+     article was laid out inside the left column and read as "stuck to the left" on any wide screen. */
+  main.single { display:block; }
   .story { max-width:820px; margin:0 auto; padding:26px 20px 60px; }
   .story h1 { font-size:27px; line-height:1.25; font-weight:500; margin:10px 0 12px; }
-  .story .kicker { font-size:11px; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; display:flex; gap:12px; flex-wrap:wrap; }
+  .story .kicker, .listen-item .kicker { font-size:11px; color:var(--dim); letter-spacing:.08em;
+    text-transform:uppercase; display:flex; gap:24px; row-gap:8px; flex-wrap:wrap; align-items:center; }
+  /* A dot between them, so the eye reads three facts rather than one run-on label. */
+  .story .kicker > span + span::before, .listen-item .kicker > span + span::before {
+    content:"\00b7"; margin-right:24px; color:var(--dim2); }
   .story img.lead { width:100%; border:1px solid var(--line); margin:16px 0; }
   .story .body { font-size:15px; line-height:1.65; color:#c8d2df; }
   .story .body p { margin:0 0 14px; }
   .story .body h2, .story .body h3 { font-size:16px; margin:22px 0 8px; }
   .story .body pre { background:var(--panel); border:1px solid var(--line); padding:10px; overflow-x:auto; font-size:12.5px; }
   .story .body blockquote { border-left:2px solid var(--line); margin:0 0 14px; padding-left:12px; color:var(--dim); }
+  .story-top { max-width:820px; margin:0 auto; padding:16px 20px 0; display:flex; align-items:center;
+               justify-content:space-between; gap:12px; }
+  .story-top a.back { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line);
+                      background:var(--panel); color:var(--fg); padding:9px 15px; font-size:13px;
+                      text-decoration:none; border-radius:5px; }
+  .story-top a.back:hover, .story-top a.back:focus-visible { border-color:var(--cool); color:var(--cool); }
+  .story-top .crumb { font-size:12px; color:var(--dim); text-decoration:none; }
+  .story-top .crumb:hover { color:var(--link); }
+  /* An episode is listened to, not read line by line: centred, with the player in the middle. */
+  .story.episode { text-align:center; }
+  .story.episode .kicker { justify-content:center; }
+  .story.episode h1 { font-size:29px; }
+  .story.episode .body { max-width:66ch; margin:0 auto; }
+  .story.episode .related a { text-align:center; }
   .cta { display:inline-block; margin:20px 0; border:1px solid var(--cool); color:var(--cool); padding:9px 14px; font-size:12.5px; }
   .cta:hover { background:#0d1c22; color:var(--cool); }
   .credit { font-size:10.5px; color:var(--dim2); margin:-10px 0 18px; }
@@ -1085,9 +1106,18 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
             "partOfSeries": {"@type": "PodcastSeries", "name": item["sourceName"]}}
            if is_episode and item.get("audio") else {}),
     }, ensure_ascii=False)
-    return f"""{head}<main>
-  <div class="story">
-    <div class="kicker">{''.join(tags)}<span>{age(item.get('published'), now)} ago</span><span>energy {item['score']:.0f}</span></div>
+    # The way back was only at the bottom of the page, under "more from the stream" - which is no use
+    # to somebody who arrived from a link and started listening.
+    crumb = ('<a class="crumb" href="/listen.html">listening</a>' if is_episode
+             else '<a class="crumb" href="/sources.html">sources</a>')
+    story_class = "story episode" if is_episode else "story"
+    top = f'<nav class="story-top"><a class="back" href="/">&larr; upsy.si</a>{crumb}</nav>\n'
+    # "energy" is how a story was ranked; an episode is not ranked that way, so its kicker says how
+    # long it runs instead.
+    third = duration_label(item.get("duration")) if is_episode else f"energy {item['score']:.0f}"
+    return f"""{head}{top}<main class="single">
+  <div class="{story_class}">
+    <div class="kicker">{''.join(tags)}<span>{age(item.get('published'), now)} ago</span><span>{third}</span></div>
     <h1>{esc(item['title'])}</h1>
     {player_html(item)}
     {lead}

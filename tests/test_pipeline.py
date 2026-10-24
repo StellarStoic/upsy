@@ -898,3 +898,50 @@ class PodcastSite(unittest.TestCase):
     def test_the_sitemap_lists_the_listen_page(self):
         sitemap = (self.site / "sitemap.xml").read_text(encoding="utf-8")
         self.assertIn("https://upsy.si/listen.html", sitemap)
+
+
+class StoryPageFurniture(unittest.TestCase):
+    """The way back, the single column, and a centred episode: the things a reader asked for."""
+
+    ITEM = {"id": "ep1", "title": "An hour on superintelligence", "url": "https://example.com/ep1",
+            "source": "show", "sourceName": "A Show", "sourceUrl": "https://example.com/feed",
+            "sourceSite": "", "sourceCategory": "podcast", "tier": 2,
+            "published": "2026-10-11T11:00:00+00:00", "summary": "A description.",
+            "content": "A description long enough to be page text.", "contentFrom": "feed",
+            "image": "", "imageLocal": "", "imageAlt": "", "imageFrom": "", "author": "A",
+            "score": 100.0, "breaking": False, "upsy": False, "upsyWhy": "", "upsyTerms": [],
+            "aiTerms": [], "siTerms": ["superintelligence"], "promo": False, "question": False,
+            "kind": "podcast", "audio": "https://cdn.example.com/ep1.mp3", "audioType": "audio/mpeg",
+            "duration": 3723, "transcript": "", "transcriptType": ""}
+
+    def page(self, **overrides):
+        item = {**self.ITEM, **overrides}
+        return build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+
+    def test_the_way_back_is_at_the_top_of_the_page(self):
+        for page in (self.page(), self.page(kind="news", audio="", duration=0)):
+            self.assertIn('<nav class="story-top">', page)
+            self.assertIn('<a class="back" href="/">&larr; upsy.si</a>', page)
+            # and it is above the article, not buried under it
+            self.assertLess(page.index('class="story-top"'), page.index('<h1>'))
+
+    def test_a_story_page_is_one_column_not_the_front_pages_grid(self):
+        self.assertIn('<main class="single">', self.page())
+
+    def test_an_episode_is_centred_and_carries_the_episode_class(self):
+        page = self.page()
+        self.assertIn('<div class="story episode">', page)
+        self.assertIn('.story.episode { text-align:center; }', build_site.CSS)
+        self.assertIn('.story.episode .kicker { justify-content:center; }', build_site.CSS)
+        self.assertIn('main.single { display:block; }', build_site.CSS)
+
+    def test_an_episode_kicker_says_how_long_it_runs_not_its_energy(self):
+        page = self.page()
+        self.assertIn("<span>1 h 02 min</span>", page)
+        self.assertNotIn("energy 100", page)
+        # a story still shows its energy
+        self.assertIn("energy 100", self.page(kind="news", audio="", duration=0))
+
+    def test_the_kicker_gets_room_between_its_spans(self):
+        self.assertIn("gap:24px", build_site.CSS)
+        self.assertIn('.story .kicker > span + span::before', build_site.CSS)
