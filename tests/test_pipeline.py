@@ -652,3 +652,75 @@ class EventPagesArePromotionsTest(unittest.TestCase):
         signals = self.signals(title="Register now for our webinar", url="https://example.com/posts/one")
         self.assertIn("register", signals)
         self.assertNotIn("path:events", signals)
+
+
+class PageWeight(unittest.TestCase):
+    """What the page actually sends: a heading, a card, and pictures at the size it draws them."""
+
+    def fixture(self, **item_overrides):
+        item = {
+            "id": "abc123", "title": "A frontier lab shipped something strange",
+            "url": "https://example.com/story", "source": "example", "sourceName": "Example AI",
+            "sourceUrl": "https://example.com/feed", "sourceCategory": "media", "tier": 2,
+            "published": "2026-10-11T09:00:00+00:00", "summary": "It did the strange thing on a Tuesday.",
+            "content": "", "contentFrom": "", "image": "https://example.com/story.jpg",
+            "author": "A", "score": 100.0, "breaking": True, "upsy": True, "upsyWhy": "Because it did.",
+            "siTerms": ["superintelligence"], "promo": False, "question": False, "tags": ["t"],
+        }
+        item.update(item_overrides)
+        counts = {"items": 1, "sources": 1, "breaking": 1, "upsy": 1, "withImage": 1,
+                  "withFullText": 0, "new": 1, "promo": 0}
+        return {"generated": "2026-10-11T10:00:00+00:00", "counts": counts, "items": [item]}
+
+    def test_the_front_page_has_a_heading(self):
+        page = build_site.build_index(self.fixture(), {"health": []}, {}, build_site.datetime.now(
+            build_site.timezone.utc))
+        self.assertIn("<h1", page)
+        self.assertIn("superintelligence</h1>", page)
+
+    def test_the_front_page_shares_a_picture_this_build_owns(self):
+        data = self.fixture(imageLocal="/img/abc123.webp")
+        page = build_site.build_index(data, {"health": []}, {}, build_site.datetime.now(
+            build_site.timezone.utc))
+        self.assertIn('property="og:image" content="https://upsy.si/img/abc123.webp"', page)
+        self.assertIn('name="twitter:card" content="summary_large_image"', page)
+
+    def test_a_publisher_url_is_never_used_as_a_picture(self):
+        # The measured failure: twelve cards hotlinking multi-megabyte originals because the mirror
+        # had refused them. A card with no picture is the cheaper outcome.
+        self.assertEqual(build_site.picture_of({"image": "https://example.com/huge.jpg"}), "")
+        self.assertEqual(build_site.picture_of({"imageLocal": "/img/a.webp",
+                                                "image": "https://example.com/huge.jpg"}), "/img/a.webp")
+
+    def test_pictures_are_shrunk_to_the_width_the_page_draws(self):
+        try:
+            from io import BytesIO
+
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed here; the workflow installs it")
+        buffer = BytesIO()
+        Image.new("RGB", (2000, 1200), (200, 30, 30)).save(buffer, format="PNG")
+        original = buffer.getvalue()
+        shrunk, suffix = build_site.optimise_picture(original, ".png")
+        self.assertEqual(suffix, ".webp")
+        self.assertLess(len(shrunk), len(original))
+        with Image.open(BytesIO(shrunk)) as result:
+            self.assertEqual(result.width, build_site.IMAGE_MAX_WIDTH)
+
+    def test_a_picture_no_page_names_is_pruned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            site = pathlib.Path(tmp)
+            (site / "img").mkdir()
+            (site / "img" / "used.webp").write_bytes(b"RIFF0000WEBP")
+            (site / "img" / "orphan.webp").write_bytes(b"RIFF0000WEBP")
+            (site / "index.html").write_text('<img src="/img/used.webp">', encoding="utf-8")
+            original = build_site.SITE
+            build_site.SITE = site
+            try:
+                removed = build_site.prune_unused_pictures()
+            finally:
+                build_site.SITE = original
+            self.assertEqual(removed, 1)
+            self.assertTrue((site / "img" / "used.webp").exists())
+            self.assertFalse((site / "img" / "orphan.webp").exists())

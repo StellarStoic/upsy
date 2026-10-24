@@ -32,6 +32,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pillow is the one dependency: it shrinks each publisher's picture to the size the page draws
+      # it. Without it the build still works, but the pictures ship at their original size (measured:
+      # 1.1 MB PNGs, and a whole front page worth of them) because a plain stdlib build cannot
+      # transcode an image. Everything else here is standard library.
+      - name: install the image pipeline
+        run: python3 -m pip install --disable-pip-version-check --quiet "pillow>=10,<14"
+
       # The fetcher's dedup state, so a story stays "already seen" between runs without committing
       # a few hundred kilobytes of JSON every ten minutes.
       - name: restore the fetcher state

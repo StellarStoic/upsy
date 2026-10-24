@@ -4,7 +4,9 @@ A wire that watches superintelligence happen: breaking news in AI, and the "upsy
 machine does something wild enough to deserve a second look.
 
 Static site, rebuilt by a GitHub Actions workflow every ten minutes. No server, no database, no
-trackers, no third-party scripts. Standard-library Python does the work, so nothing needs installing.
+trackers, no third-party scripts. Standard-library Python does the work; the one dependency is
+Pillow, which the workflow installs, and which shrinks each picture to the size the page draws it
+(see "Pictures" below). Without it the build still runs and the pictures are simply heavier.
 
 ## How it works
 
@@ -29,6 +31,17 @@ corrective rules learned from watching real feeds:
 - Promotions ("48 hours to Disrupt — register now") are demoted hard.
 - Subreddit questions ("Serious Question: …") are demoted and kept out of the ticker.
 - A story with an image gets a small bonus, because a story with a picture is worth more on a page.
+
+## Pictures
+
+Each story's picture is fetched once, cached in `data/images/` between runs and served from
+`/img/` — never hotlinked from the publisher's CDN, which both spends someone else's bandwidth and
+breaks the moment they refuse a foreign `Referer`. Before it is stored it is resized to 720 px
+wide and encoded as WebP at quality 78: a card is drawn about 360 px wide and a story lead at 820,
+and the originals ran to megabytes each. Measured on the front page, the pictures went from a
+median of 1.1 MB to 24 kB, and a page that pulled a dozen multi-megabyte originals now pulls none.
+A picture the build cannot mirror is dropped rather than hotlinked, and anything in `img/` that no
+page names is pruned at the end of the build.
 - Breaking is capped at six, one per source: a ticker with twenty-two entries is not a ticker.
 - No single source may take more than three of the top forty slots.
 

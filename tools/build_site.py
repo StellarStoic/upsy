@@ -30,7 +30,9 @@ FEED_ITEMS = 60
 
 CACHE_IMAGES = True          # the test suite turns this off: it must never touch the network
 IMAGE_CACHE = ROOT / "data" / "images"
-MAX_IMAGE_BYTES = 1_500_000
+MAX_IMAGE_BYTES = 8_000_000     # we download the publisher's picture, then shrink it ourselves
+IMAGE_MAX_WIDTH = 720           # a card is drawn ~360 px wide and a story lead 820: 720 covers both
+IMAGE_WEBP_QUALITY = 78
 
 
 def direct_network() -> None:
@@ -62,65 +64,151 @@ def image_suffix(data: bytes) -> str:
     return ""
 
 
+def optimise_picture(data: bytes, suffix: str) -> tuple[bytes, str]:
+    """Shrink a publisher's picture to the size the page actually draws it.
+
+    The wire used to keep whatever the CDN served, and its pictures measured 1.1 MB each; worse, the
+    ones too big to mirror fell back to a hotlink to the original, so a dozen cards were pulling
+    multi-megabyte files off somebody else's CDN on the reader's data plan. A 720 px WebP at this
+    quality is 60-90 kB and is indistinguishable at the size the card is drawn.
+    """
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:              # no Pillow: the build still works, the pictures are just heavy
+        return data, suffix
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image.load()
+            if image.mode in ("P", "LA", "RGBA") or "transparency" in image.info:
+                # Flatten onto white: the card has no alpha, and a transparent PNG flattened to black
+                # looks like a rendering bug.
+                flat = Image.new("RGB", image.size, (255, 255, 255))
+                rgba = image.convert("RGBA")
+                flat.paste(rgba, mask=rgba.split()[-1])
+                image = flat
+            elif image.mode != "RGB":
+                image = image.convert("RGB")
+            if image.width > IMAGE_MAX_WIDTH:
+                height = max(1, round(image.height * IMAGE_MAX_WIDTH / image.width))
+                image = image.resize((IMAGE_MAX_WIDTH, height), Image.LANCZOS)
+            buffer = BytesIO()
+            animated = bool(getattr(image, "is_animated", False))
+            if animated and len(data) > 2_000_000:
+                # One 7.5 MB animation on a news card is a download nobody asked for; its first
+                # frame is the picture the reader needs. Small animations keep their frames.
+                image.seek(0)
+                image.convert("RGB").save(buffer, format="WEBP", quality=IMAGE_WEBP_QUALITY, method=6)
+            elif animated:
+                frames = []
+                for index in range(min(getattr(image, "n_frames", 1), 40)):
+                    image.seek(index)
+                    frames.append(image.convert("RGB").copy())
+                frames[0].save(buffer, format="WEBP", quality=IMAGE_WEBP_QUALITY, method=6,
+                               save_all=True, append_images=frames[1:], duration=image.info.get("duration", 100))
+            else:
+                image.save(buffer, format="WEBP", quality=IMAGE_WEBP_QUALITY, method=6)
+            smaller = buffer.getvalue()
+    except Exception:                # an exotic format is not a build failure
+        return data, suffix
+    if len(smaller) >= len(data):
+        return data, suffix          # already lean: re-encoding it only loses quality
+    return smaller, ".webp"
+
+
+def picture_of(item: dict) -> str:
+    """The picture this build actually has a copy of, or nothing.
+
+    The publisher's own URL is deliberately not a fallback: that is how twelve cards came to pull
+    multi-megabyte originals from someone else's CDN, on the reader's data, because the mirror had
+    refused them for being too big. A card without a picture is the cheaper failure.
+    """
+    return item.get("imageLocal") or ""
+
+
+def mirror_picture(url: str) -> str:
+    """Fetch one picture, shrink it, and return the path it is served from ("" when it cannot be)."""
+    import hashlib
+    import shutil
+    import urllib.request
+
+    if not url.startswith("http"):
+        return ""
+    # The processing recipe is part of the key: a cache written before the pictures were shrunk
+    # holds full-size originals, and reusing one would keep serving megabytes.
+    # v2: the first pass left animated gifs at their original size, and the key has to change when the
+    # processing does or the old full-size copy is reused forever.
+    recipe = "w%d-webp%d-v2" % (IMAGE_MAX_WIDTH, IMAGE_WEBP_QUALITY)
+    digest = hashlib.sha1((url + "|" + recipe).encode("utf-8")).hexdigest()[:20]
+    stored = next((p for p in IMAGE_CACHE.glob(digest + ".*")), None)
+    if stored is not None and not image_suffix(stored.read_bytes()[:16]):
+        # A cache written before the validation existed, or a truncated download: drop it and fetch
+        # again rather than serve a broken picture for as long as the cache survives.
+        stored.unlink(missing_ok=True)
+        stored = None
+    if stored is None:
+        try:
+            request = urllib.request.Request(url, headers={
+                "User-Agent": "upsy.si/1.0 (+https://upsy.si/)", "Referer": "https://upsy.si/"})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read(MAX_IMAGE_BYTES + 1)
+            expected = response.headers.get("Content-Length")
+        except Exception:
+            return ""
+        if not data or len(data) > MAX_IMAGE_BYTES:
+            return ""
+        # A truncated download starts with the right magic bytes and still renders as a broken image,
+        # so a declared length that does not match is a failed download, not a picture.
+        if expected and expected.isdigit() and int(expected) != len(data):
+            return ""
+        suffix = image_suffix(data)
+        if not suffix:
+            return ""       # a challenge page or an error page, not a picture
+        data, suffix = optimise_picture(data, suffix)
+        stored = IMAGE_CACHE / (digest + suffix)
+        stored.write_bytes(data)
+    shutil.copy2(stored, SITE / "img" / stored.name)
+    return f"/img/{stored.name}"
+
+
+def cache_moment_images(moments: dict) -> int:
+    """The sidebar's moments carry pictures too, and those were still hotlinked originals."""
+    if not CACHE_IMAGES:
+        return 0
+    mirrored = 0
+    for moment in moments.get("moments") or []:
+        if moment.get("image") and moment["image"].startswith("http"):
+            local = mirror_picture(moment["image"])
+            if local:
+                moment["imageLocal"] = local
+                mirrored += 1
+    return mirrored
+
+
 def cache_images(items: list[dict], limit: int = 200) -> int:
     """Keep a copy of each story's picture inside the site.
 
     Hotlinking a publisher's CDN is both fragile - plenty of them refuse a request with a Referer
     from somewhere else, which shows the reader a broken thumbnail - and impolite, since the page
-    would be spending someone else's bandwidth. So each picture is fetched once, kept under
-    data/images/ (cached between builds in CI) and served from /img/ with the source credited.
+    would be spending someone else's bandwidth. So each picture is fetched once, shrunk to the size
+    the page draws it, kept under data/images/ (cached between builds in CI) and served from /img/
+    with the source credited.
     """
     if not CACHE_IMAGES:
         return 0
     import concurrent.futures as futures
-    import hashlib
-    import shutil
-    import urllib.request
 
     direct_network()
     IMAGE_CACHE.mkdir(parents=True, exist_ok=True)
     (SITE / "img").mkdir(exist_ok=True)
-    wanted = [i for i in items if (i.get("image") or "").startswith("http")][:limit]
+    wanted = [i for i in items if picture_of(i) == "" and (i.get("image") or "").startswith("http")][:limit]
 
-    def one(item: dict) -> str:
-        url = item["image"]
-        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:20]
-        stored = next((p for p in IMAGE_CACHE.glob(digest + ".*")), None)
-        if stored is not None and not image_suffix(stored.read_bytes()[:16]):
-            # A cache written before the validation existed, or a truncated download: drop it and
-            # fetch again rather than serve a broken picture for as long as the cache survives.
-            stored.unlink(missing_ok=True)
-            stored = None
-        if stored is None:
-            try:
-                request = urllib.request.Request(url, headers={
-                    "User-Agent": "upsy.si/1.0 (+https://upsy.si/)", "Referer": "https://upsy.si/"})
-                with urllib.request.urlopen(request, timeout=20) as response:
-                    data = response.read(MAX_IMAGE_BYTES + 1)
-                expected = response.headers.get("Content-Length")
-            except Exception:
-                return ""
-            if not data or len(data) > MAX_IMAGE_BYTES:
-                return ""
-            # A truncated download starts with the right magic bytes and still renders as a broken
-            # image, so a declared length that does not match is a failed download, not a picture.
-            if expected and expected.isdigit() and int(expected) != len(data):
-                return ""
-            suffix = image_suffix(data)
-            if not suffix:
-                return ""       # a challenge page or an error page, not a picture
-            stored = IMAGE_CACHE / (digest + suffix)
-            stored.write_bytes(data)
-        shutil.copy2(stored, SITE / "img" / stored.name)
-        return f"/img/{stored.name}"
-
-    cached = 0
     with futures.ThreadPoolExecutor(max_workers=8) as pool:
-        for item, local in zip(wanted, pool.map(one, wanted)):
+        for item, local in zip(wanted, pool.map(lambda i: mirror_picture(i["image"]), wanted)):
             if local:
                 item["imageLocal"] = local
-                cached += 1
-    return cached
+    return sum(1 for item in items if item.get("imageLocal"))
 
 
 def shot_note() -> str:
@@ -142,6 +230,31 @@ def shot_note() -> str:
     note = f" ({status['note']})" if status.get("note") else ""
     return (f"{status.get('taken', 0)} shot, {status.get('refused', 0)} refused, "
             f"{status.get('wanted', 0)} wanted, browser {browser.split('/')[-1] or 'none'}{note}")
+
+
+def prune_unused_pictures() -> int:
+    """Delete pictures in img/ that no page names.
+
+    Every build copies the pictures its stories use out of the cache, and nothing ever removed the
+    ones an earlier build had copied. The measurement that found this: 232 files in img/, 116 of them
+    unreferenced, 11.2 MB of a page that served none of it.
+    """
+    folder = SITE / "img"
+    if not folder.exists():
+        return 0
+    used = set()
+    for page in SITE.rglob("*.html"):
+        try:
+            text = page.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        used.update(re.findall(r"/img/([A-Za-z0-9._-]+)", text))
+    removed = 0
+    for picture in folder.iterdir():
+        if picture.is_file() and picture.name not in used:
+            picture.unlink(missing_ok=True)
+            removed += 1
+    return removed
 
 
 def attach_shots(items: list[dict], limit: int, site: pathlib.Path, shots: pathlib.Path) -> int:
@@ -216,6 +329,10 @@ def truncate(text: str, n: int) -> str:
 
 
 CSS = """
+  /* The wire had no h1 at all: a page with no h1 has no title a screen reader or a crawler
+     can name it by. This keeps the drawn page exactly as designed. */
+  .vh { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+        clip-path:inset(50%); white-space:nowrap; border:0; }
   :root {
     --bg:#08090c; --panel:#0d1014; --line:#1d222a; --fg:#e3e9f2; --dim:#7b8695; --dim2:#525c69;
     --hot:#ff5f4a; --cool:#4ad4ff; --upsy:#b6ff5f; --link:#8fd0ff;
@@ -388,6 +505,7 @@ BASE_HEAD = """<!doctype html>
 <meta property="og:description" content="{og_description}">
 <meta property="og:url" content="{canonical}">
 {og_image}<meta name="twitter:card" content="{twitter_card}">
+{extra_meta}
 <link rel="alternate" type="application/atom+xml" title="upsy.si" href="/feed.xml">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <meta name="upsy-editor" content="{editor}">
@@ -447,7 +565,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
         tags.append('<span class="tag new">new</span>')
     if item.get("promo"):
         tags.append('<span class="tag q">promo</span>')
-    picture = item.get("imageLocal") or item.get("image")
+    picture = picture_of(item)
     image = (f'<img class="thumb" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" loading="lazy" width="112" height="76">'
              if picture else '<div class="thumb empty" aria-hidden="true"></div>')
     trace = " ".join(f"<i>{esc(t)}</i>" for t in ((item.get("aiTerms") or [])[:2] + (item.get("siTerms") or [])[:3]))
@@ -672,6 +790,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
         f'<span class="num">{per_source.get(h["name"], 0)}</span></button>'
         for h in sorted(meta["health"], key=lambda h: (-per_source.get(h["name"], 0), h["name"].lower()))
     )
+    # The front page shared a link with no picture while every story page carried one.
+    lead_picture = next((picture_of(i) for i in items if picture_of(i)), "")
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
@@ -681,11 +801,13 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
         canonical=SITE_URL + "/", og_type="website", site_name=SITE_NAME,
         og_title="upsy.si \u2014 watching superintelligence happen",
         og_description=f"{counts['items']} stories, {counts['sources']} sources, {counts['breaking']} breaking.",
-        og_image="", twitter_card="summary", css=CSS)
+        og_image=(f'<meta property="og:image" content="{SITE_URL}{lead_picture}">\n' if lead_picture else ""),
+        twitter_card="summary_large_image" if lead_picture else "summary",
+        extra_meta="", css=CSS)
     header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
                            upsy=counts["upsy"], updated=age(data["generated"], now))
     drawer = NET_DRAWER.format(net_rows=net_rows, total=len(meta["health"]))
-    return f"""{head}{header}{drawer}{FILTER_BAR}
+    return f"""{head}<h1 class="vh">upsy.si \u2014 a live wire on superintelligence</h1>{header}{drawer}{FILTER_BAR}
 <span id="top-mark" aria-hidden="true"></span>
 <main>
   <section class="rows" id="stream">
@@ -781,7 +903,7 @@ def render_anomalies(moments: dict, items: list[dict], now: datetime) -> str:
     """Model-written moments when data/moments.json has them, ranked items when it does not."""
     cards = []
     for moment in moments.get("moments", [])[:5]:
-        image = f'<img class="thumb" src="{esc(moment["image"])}" alt="" loading="lazy" width="112" height="76">' if moment.get("image") else ""
+        image = f'<img class="thumb" src="{esc(moment["imageLocal"])}" alt="" loading="lazy" width="112" height="76">' if moment.get("imageLocal") else ""
         link = moment.get("url") or "#"
         cards.append(
             f'<div class="anomaly"><h4><a href="{esc(link)}" target="_blank" rel="noopener nofollow">{esc(truncate(moment.get("title", ""), 90))}</a></h4>'
@@ -830,7 +952,7 @@ def text_to_html(text: str) -> str:
 
 def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -> str:
     # The social card points at our own copy, so a preview never depends on the publisher's CDN.
-    card = item.get("imageLocal") or item.get("image")
+    card = picture_of(item)
     og_image = f'<meta property="og:image" content="{SITE_URL}{esc(card)}">\n' if card else ""
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
@@ -839,8 +961,11 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         description=truncate(item["summary"] or item["title"], 200),
         canonical=f"{SITE_URL}/s/{item['id']}/", og_type="article", site_name=SITE_NAME,
         og_title=truncate(item["title"], 110), og_description=truncate(item["summary"] or item["title"], 200),
-        og_image=og_image, twitter_card="summary_large_image" if item.get("image") else "summary", css=CSS)
-    picture = item.get("imageLocal") or item.get("image")
+        og_image=og_image, twitter_card="summary_large_image" if card else "summary",
+        extra_meta=(f'<meta property="article:published_time" content="{esc(item["published"])}">\n'
+                    f'<meta property="article:section" content="{esc(item["sourceName"])}">\n'
+                    if item.get("published") else ""), css=CSS)
+    picture = picture_of(item)
     lead = (f'<img class="lead" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" width="820">'
             f'<div class="credit">image: {esc(item["sourceName"])}</div>') if picture else ""
     if item.get("content"):
@@ -908,7 +1033,7 @@ def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> st
         title="sources | upsy.si", description="Every feed upsy.si reads, with its health and freshness.",
         canonical=f"{SITE_URL}/sources.html", og_type="website", site_name=SITE_NAME,
         og_title="sources | upsy.si", og_description="Every feed upsy.si reads, with health and freshness.",
-        og_image="", twitter_card="summary", css=CSS)
+        og_image="", twitter_card="summary", extra_meta="", css=CSS)
     return f"""{head}<main>
   <div class="story">
     <h1>sources</h1>
@@ -991,6 +1116,7 @@ def main() -> int:
     SITE.mkdir(exist_ok=True)
     cached = cache_images(items)
     shot_pictures = attach_shots(items, 200, SITE, IMAGE_CACHE.parent / "shots")
+    moment_pictures = cache_moment_images(moments)
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
@@ -1009,7 +1135,7 @@ def main() -> int:
         json.dumps({"generated": data["generated"], "counts": data["counts"],
                     "items": [{"id": i["id"], "title": esc(i["title"]), "url": esc(i["url"]),
                                "sourceName": esc(i["sourceName"]), "summary": esc(truncate(i["summary"], 200)),
-                               "image": esc(i.get("imageLocal") or i["image"]), "score": i["score"], "breaking": i["breaking"],
+                               "image": esc(picture_of(i)), "score": i["score"], "breaking": i["breaking"],
                                "src": src_key(i["sourceName"]),
                                "upsy": i["upsy"], "age": age(i["published"], now)} for i in items]},
                    ensure_ascii=False), encoding="utf-8")
@@ -1023,9 +1149,12 @@ def main() -> int:
     (SITE / "CNAME").write_text("upsy.si\n", encoding="utf-8")
     (SITE / ".nojekyll").write_text("", encoding="utf-8")
     (SITE / "icon.svg").write_text(ICON, encoding="utf-8")
+    pruned = prune_unused_pictures()
     pages = len(list((SITE / "s").iterdir()))
+    print(f"pruned {pruned} unused picture(s)")
     print(f"built _site/: index.html ({min(len(items), INDEX_ROWS)} rows), {pages} story pages, "
-          f"feed.xml, sitemap.xml, sources.html, {cached} cached image(s), {shot_pictures} screenshot(s)")
+          f"feed.xml, sitemap.xml, sources.html, {cached} cached image(s), {moment_pictures} moment picture(s), "
+          f"{shot_pictures} screenshot(s)")
     return 0
 
 
