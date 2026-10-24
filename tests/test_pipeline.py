@@ -282,7 +282,8 @@ class PublishedSchema(unittest.TestCase):
                 "sourceCategory", "tier", "published", "summary", "content", "contentFrom",
                 "image", "imageAlt", "imageFrom", "author", "score", "breaking", "upsy", "aiTerms",
                 "siTerms", "upsyTerms", "upsyWhy", "promo", "question",
-                "kind", "audio", "audioType", "duration", "transcript", "transcriptType")
+                "kind", "audio", "audioType", "duration", "transcript", "transcriptType",
+                "contentHtml")
 
     def test_real_output_has_every_field_the_site_reads(self):
         news = ROOT / "data" / "news.json"
@@ -945,3 +946,68 @@ class StoryPageFurniture(unittest.TestCase):
     def test_the_kicker_gets_room_between_its_spans(self):
         self.assertIn("gap:24px", build_site.CSS)
         self.assertIn('.story .kicker > span + span::before', build_site.CSS)
+
+
+class SponsorsInDescriptions(unittest.TestCase):
+    """Adverts out of an episode's description, and the links left clickable."""
+
+    SPONSOR_BLOCK = ('<p>AI is changing cybersecurity.</p>'
+                     '<p>Featuring:</p><ul><li>Spencer – <a href="https://example.com/spencer">LinkedIn</a></li></ul>'
+                     '<p>Links:</p><ul><li><a href="https://www.vulncheck.com/">VulnCheck</a></li>'
+                     '<li>Go Exploit framework: https://github.com/vulncheck-oss/go-exploit</li></ul>'
+                     '<p>Sponsors:</p><ul><li><a href="https://www.hostinger.com/">Hostinger</a>: use code '
+                     'practical for 10 percent off.</li></ul>'
+                     '<p>Resources and Events:</p><ul><li>Meet us at https://example.com/summit</li></ul>')
+
+    PLAIN_BLOCK = """Hosts examine whether capital sets the pace of intelligence.
+For full show notes read the episode page:https://example.com/notes
+Sponsors:
+OutSystems: the leading agentic platform. Start at https://outsystems.com/tcr
+Parallel: web search for agents at https://parallel.ai/tcr
+CHAPTERS:
+(00:00) Weekly episode preview
+(04:58) Recursive self improvement
+SOCIAL LINKS:
+Website: https://example.com/show"""
+
+    def test_the_sponsor_block_is_gone(self):
+        cleaned = fetcher.clean_episode_html(self.SPONSOR_BLOCK)
+        self.assertNotIn("hostinger", cleaned.lower())
+        self.assertNotIn("10 percent off", cleaned.lower())
+        self.assertNotIn("Sponsors:", cleaned)
+
+    def test_what_comes_after_the_sponsors_survives(self):
+        cleaned = fetcher.clean_episode_html(self.SPONSOR_BLOCK)
+        self.assertIn("AI is changing cybersecurity", cleaned)
+        self.assertIn("Meet us at", cleaned)          # the next labelled section
+        self.assertIn("https://www.vulncheck.com/", cleaned)
+
+    def test_links_keep_their_words(self):
+        cleaned = fetcher.clean_episode_html(self.SPONSOR_BLOCK)
+        self.assertIn('<a href="https://www.vulncheck.com/" rel="noopener nofollow" target="_blank">VulnCheck</a>',
+                      cleaned)
+        self.assertIn(">LinkedIn</a>", cleaned)
+
+    def test_a_bare_url_becomes_a_link(self):
+        cleaned = fetcher.clean_episode_html(self.SPONSOR_BLOCK)
+        self.assertIn('<a href="https://github.com/vulncheck-oss/go-exploit"', cleaned)
+        self.assertIn('<a href="https://example.com/summit"', cleaned)
+
+    def test_a_description_with_no_markup_is_read_line_by_line(self):
+        cleaned = fetcher.clean_episode_html(self.PLAIN_BLOCK)
+        self.assertNotIn("outsystems.com", cleaned.lower())
+        self.assertNotIn("parallel.ai", cleaned.lower())
+        self.assertIn("CHAPTERS:", cleaned)            # the advertised chapters are not an advert block
+        self.assertIn("Recursive self improvement", cleaned)
+        self.assertIn('<a href="https://example.com/notes"', cleaned)
+        self.assertIn('<a href="https://example.com/show"', cleaned)
+
+    def test_nothing_that_can_run_survives(self):
+        dirty = ('<p onclick="steal()">Hello</p><script>alert(1)</script>'
+                 '<p><a href="javascript:alert(2)">click</a><a href="https://ok.example/">fine</a></p>'
+                 '<iframe src="https://evil.example/"></iframe><img src=x onerror="x()">')
+        cleaned = fetcher.clean_episode_html(dirty)
+        for forbidden in ("<script", "onclick", "javascript:", "<iframe", "<img", "onerror"):
+            self.assertNotIn(forbidden, cleaned.lower())
+        self.assertIn('href="https://ok.example/"', cleaned)
+        self.assertIn("Hello", cleaned)

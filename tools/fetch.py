@@ -515,6 +515,121 @@ def reusable(items: list[dict]) -> list[dict]:
     return [item for item in items if is_article_url(item.get("link") or "")]
 
 
+ALLOWED_TAGS = ("p", "br", "strong", "b", "em", "i", "ul", "ol", "li", "a", "code", "blockquote",
+                "h3", "h4")
+
+# A sponsor label is a block of its own ("Sponsors:", "Our sponsors", "Brought to you by:") - not a
+# sentence that happens to mention one. Feeds put the adverts under it, sometimes in the same
+# paragraph when the show is less tidy.
+SPONSOR_LABEL = re.compile(
+    r"(?i)^\W*(sponsors?|our sponsors?|sponsored by|this episode is sponsored by|brought to you by|"
+    r"advertisement|ad)\W{0,3}$")
+SPONSOR_PREFIX = re.compile(
+    r"(?i)^\W*(sponsors?|our sponsors?|sponsored by|this episode is sponsored by|brought to you by|"
+    r"advertisement)\s*[:\uff1a]")
+# What ends an advert block: the next section the show bothered to label.
+SECTION_LABEL = re.compile(
+    r"(?i)^\W*(chapters|timestamps|links|resources|resources and events|featuring|show notes|credits|"
+    r"mentions|guests?|transcript|in this episode|notes)\W{0,3}$")
+
+
+def _linkify(text: str) -> str:
+    """Bare URLs in a description become links with a label, not dead text."""
+    parts = re.split(r"(<[^>]+>)", text)
+    out = []
+    for part in parts:
+        if part.startswith("<"):
+            out.append(part)
+            continue
+        out.append(re.sub(
+            r"(?i)\b(https?://[^\s<>\"']+)",
+            lambda m: (f'<a href="{m.group(1)}" rel="noopener nofollow" target="_blank">'
+                       f'{m.group(1)}</a>'),
+            part))
+    return "".join(out)
+
+
+def _sanitise_html(raw: str) -> str:
+    """Keep the description's own markup, and nothing that can run.
+
+    Allowed: paragraphs, lists, emphasis, code, and anchors with an http(s) address. Every other tag
+    goes, every attribute goes, and a link that is not http(s) keeps its words but loses its address.
+    """
+    text = re.sub(r"(?is)<(script|style|iframe|object|embed)[^>]*>.*?</\1>", " ", raw)
+
+    def anchor(match: re.Match) -> str:
+        attrs, inner = match.group(1), match.group(2)
+        found = re.search(r"""href\s*=\s*["']([^"']*)["']""", attrs, re.I)
+        url = (found.group(1) if found else "").strip()
+        inner = re.sub(r"(?is)<(?!/?a\b)[^>]*>", "", inner)
+        if not re.match(r"(?i)^https?://", url):
+            return inner
+        return (f'<a href="{html.escape(url, quote=True)}" rel="noopener nofollow" '
+                f'target="_blank">{inner}</a>')
+
+    text = re.sub(r"(?is)<a\b([^>]*)>(.*?)</a>", anchor, text)
+
+    def tag(match: re.Match) -> str:
+        # group(1) is the "/" of a closing tag; the leading "<" is part of the match, not the name
+        closing, name = match.group(1), (match.group(2) or "").lower()
+        if name == "a":
+            return match.group(0)
+        if name == "br":
+            return "<br>"
+        if name not in ALLOWED_TAGS:
+            return ""
+        return f"</{name}>" if closing else f"<{name}>"
+
+    text = re.sub(r"(?is)<(/?)([a-z][a-z0-9]*)([^>]*)>", tag, text)
+    return _linkify(text)
+
+
+def _blocks(raw_html: str) -> list[tuple[str, str]]:
+    """The description as (markup, plain text) blocks, so an advert can be dropped whole."""
+    raw_html = re.sub(r"(?is)^\s*<!\[CDATA\[(.*?)\]\]>\s*$", r"\1", raw_html.strip())
+    structured = re.search(r"(?i)<(p|ul|ol|div|blockquote|h[2-4])\b", raw_html)
+    if structured:
+        pieces = re.findall(
+            r"(?is)<(?:p|ul|ol|h2|h3|h4|blockquote|div)\b[^>]*>.*?</(?:p|ul|ol|h2|h3|h4|blockquote|div)>",
+            raw_html)
+        if not pieces:
+            pieces = [raw_html]
+        out = []
+        for piece in pieces:
+            clean = _sanitise_html(piece).strip()
+            text = re.sub(r"\s+", " ", strip_html(clean)).strip()
+            if clean and text:
+                out.append((clean, text))
+        return out
+    # Some shows publish a description with no markup at all: plain lines, sponsors included. Each
+    # non-empty line becomes a block so the same advert rule can see it, and each kept line becomes
+    # its own paragraph on the page.
+    out = []
+    for line in raw_html.split("\n"):
+        text = re.sub(r"\s+", " ", line).strip()
+        if not text:
+            continue
+        clean = "<p>" + _linkify(html.escape(text, quote=False)) + "</p>"
+        out.append((clean, text))
+    return out
+
+
+def clean_episode_html(raw_html: str) -> str:
+    """An episode's description with the sponsor block taken out and its links kept clickable."""
+    kept, skipping = [], False
+    for markup, text in _blocks(raw_html):
+        if skipping:
+            if SECTION_LABEL.match(text):
+                skipping = False
+            else:
+                continue
+        if SPONSOR_LABEL.match(text) or SPONSOR_PREFIX.match(text):
+            skipping = True
+            continue
+        kept.append(markup)
+    return "\n".join(kept)
+
+
 def episode_fields(source: dict, raw: dict) -> dict:
     """The fields that make an item an episode, or nothing at all.
 
@@ -543,6 +658,14 @@ def episode_fields(source: dict, raw: dict) -> dict:
     if description:
         fields["content"] = description[:4000]
         fields["contentFrom"] = "feed"
+    raw_html = raw.get("summaryHtml") or ""
+    if raw_html:
+        cleaned = clean_episode_html(raw_html)
+        if cleaned:
+            fields["contentHtml"] = cleaned[:8000]
+            plain = re.sub(r"\s+", " ", strip_html(cleaned)).strip()
+            if plain:
+                fields["summary"] = plain[:600]
     return fields
 
 
@@ -598,6 +721,7 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
             "published": parse_date(node),
             "author": strip_html(first_text(node, ("author", "creator", "name"))),
             "summary": strip_html(raw_summary)[:1200],
+            "summaryHtml": raw_summary[:12000],
             "content": strip_html(full_text) if full_text else "",
             "has_full_text": bool(full_text),
             "image": image_from_node(node),
@@ -775,10 +899,17 @@ def run(args: argparse.Namespace) -> int:
 
     def read_source(source: dict) -> tuple[dict, list[dict], str]:
         cached = feed_cache.get(source["url"], {})
+        etag = None if args.ignore_cache else cached.get("etag")
+        modified = None if args.ignore_cache else cached.get("modified")
+        if source.get("kind") == "podcast":
+            # An episode's description is rebuilt from the feed's own markup, and a cache written
+            # before that markup was kept cannot produce it - a 304 would carry the old items
+            # forward forever, so ask for the whole feed instead.
+            previous = item_cache.get(source["url"], [])
+            if previous and not all("summaryHtml" in entry for entry in previous):
+                etag = modified = None
         try:
-            status, body, headers = fetch_with_retries(source["url"],
-                                                       etag=None if args.ignore_cache else cached.get("etag"),
-                                                       modified=None if args.ignore_cache else cached.get("modified"))
+            status, body, headers = fetch_with_retries(source["url"], etag=etag, modified=modified)
         except Exception as exc:  # noqa: BLE001
             # A source that fails now still has the items it gave us last time, and losing them on a
             # transient 429 or a Cloudflare hiccup is how a stream quietly empties out.
@@ -1042,7 +1173,8 @@ def run(args: argparse.Namespace) -> int:
             "upsyWhy": item.get("upsyWhy", ""),
             # An episode is an item with audio. These are published for every item, empty on the ones
             # that are not episodes, so nothing downstream has to ask whether the key exists.
-            "kind": item.get("kind", "news"), "audio": item.get("audio", ""),
+            "kind": item.get("kind", "news"), "contentHtml": item.get("contentHtml", ""),
+            "audio": item.get("audio", ""),
             "audioType": item.get("audioType", ""), "duration": item.get("duration", 0),
             "transcript": item.get("transcript", ""), "transcriptType": item.get("transcriptType", ""),
         })

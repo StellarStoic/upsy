@@ -1077,7 +1077,13 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     picture = picture_of(item)
     lead = (f'<img class="lead" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" width="820">'
             f'<div class="credit">image: {esc(item["sourceName"])}</div>') if picture else ""
-    if item.get("content"):
+    if item.get("kind") == "podcast" and item.get("contentHtml"):
+        # An episode keeps the description's own markup: the sponsors are already gone from it, and
+        # its links stay clickable with the words the show gave them ("LinkedIn", "Go Exploit
+        # framework") instead of a bare URL in a paragraph.
+        body = item["contentHtml"]
+        note = ""
+    elif item.get("content"):
         body = text_to_html(item["content"])
         note = ""
     else:
