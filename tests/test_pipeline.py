@@ -1011,3 +1011,22 @@ Website: https://example.com/show"""
             self.assertNotIn(forbidden, cleaned.lower())
         self.assertIn('href="https://ok.example/"', cleaned)
         self.assertIn("Hello", cleaned)
+
+
+class NoStrayBytes(unittest.TestCase):
+    """A CSS escape written inside a Python string is not an escape (a NUL byte shipped once)."""
+
+    def test_the_stylesheet_carries_no_control_characters(self):
+        control = [hex(ord(ch)) for ch in build_site.CSS if ord(ch) < 9 or ord(ch) == 0]
+        self.assertEqual(control, [], f"control characters in the stylesheet: {control}")
+        self.assertNotIn("\ufffd", build_site.CSS)
+
+    def test_the_kicker_separator_is_the_character_itself(self):
+        self.assertIn('content:"\u00b7"', build_site.CSS)
+
+    def test_a_rendered_page_carries_no_nul_and_no_replacement_character(self):
+        item = dict(StoryPageFurniture.ITEM)
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertNotIn("\x00", page)
+        self.assertNotIn("\ufffd", page)
+        self.assertIn("\u00b7", build_site.CSS)

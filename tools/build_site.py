@@ -486,7 +486,10 @@ CSS = """
     text-transform:uppercase; display:flex; gap:24px; row-gap:8px; flex-wrap:wrap; align-items:center; }
   /* A dot between them, so the eye reads three facts rather than one run-on label. */
   .story .kicker > span + span::before, .listen-item .kicker > span + span::before {
-    content:"\00b7"; margin-right:24px; color:var(--dim2); }
+    /* The middle dot is written as the character itself. Writing the CSS escape inside a
+       Python string does not survive: the backslash-zero becomes a NUL byte and the page
+       showed a placeholder glyph followed by "0b7". */
+    content:"·"; margin-right:24px; color:var(--dim2); }
   .story img.lead { width:100%; border:1px solid var(--line); margin:16px 0; }
   .story .body { font-size:15px; line-height:1.65; color:#c8d2df; }
   .story .body p { margin:0 0 14px; }
