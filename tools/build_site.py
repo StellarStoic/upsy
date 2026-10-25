@@ -597,7 +597,7 @@ HEADER = """<header class="top">
     <span class="hot">{breaking} breaking</span>
     <span><b>{upsy}</b> anomalies</span>
     <span>updated {updated}</span>
-    <span><a href="/listen.html">listening</a></span>
+    <span><a href="/listen.html">Podcasts</a></span>
     <span><a href="/sources.html">sources</a></span>
   </div>
   <button id="net-toggle" class="net-toggle" type="button" aria-expanded="false"
@@ -860,7 +860,7 @@ def render_listen_lane(episodes: list[dict], now: datetime, limit: int = 3) -> s
                     f'<span class="play" aria-hidden="true">&#9654;</span>'
                     f'<span class="lt">{esc(truncate(episode["title"], 78))}</span>'
                     f'<span class="lm">{meta_bits}</span></a>')
-    return ('<section class="listen">\n      <h3>listening</h3>\n      '
+    return ('<section class="listen">\n      <h3>Podcasts</h3>\n      '
             + "\n      ".join(rows)
             + f'\n      <p class="brief"><a href="/listen.html">every episode and how to play it</a></p>\n    </section>')
 
@@ -1357,7 +1357,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     # An episode belongs to the listening feed, so that is where its way back goes - the wire is the
     # crumb beside it. A story still returns to the wire, with the source list as its crumb.
     if is_episode:
-        back = '<a class="back" href="/listen.html">&larr; listening</a>'
+        back = '<a class="back" href="/listen.html">&larr; Podcasts</a>'
         crumb = '<a class="crumb" href="/">the wire</a>'
     else:
         back = '<a class="back" href="/">&larr; upsy.si</a>'
@@ -1377,9 +1377,9 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     <div class="body">{body}</div>
     <a class="cta" href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">{cta_label} &rarr;</a>
     {note}
-    <div class="related"><h3>{'more listening' if is_episode else 'more from the stream'}</h3>
+    <div class="related"><h3>{'more podcasts' if is_episode else 'more from the stream'}</h3>
       {related_html}
-      <a href="{'/listen.html' if is_episode else '/'}">&larr; back to {'listening' if is_episode else 'upsy.si'}</a>
+      <a href="{'/listen.html' if is_episode else '/'}">&larr; back to {'Podcasts' if is_episode else 'upsy.si'}</a>
     </div>
   </div>
 </main>
@@ -1427,11 +1427,11 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
-        title="Listening | upsy.si",
+        title="Podcasts | upsy.si",
         description=("AI podcasts worth the time, each with a description you can read before you press "
                      "play and a player that asks the publisher's host for the file only when you do."),
         canonical=f"{SITE_URL}/listen.html", og_type="website", site_name=SITE_NAME,
-        og_title="Listening | upsy.si",
+        og_title="Podcasts | upsy.si",
         og_description=f"{len(episodes)} episodes from {len({e['sourceName'] for e in episodes})} shows.",
         og_image="", twitter_card="summary", extra_meta="", css=CSS)
     header = LISTEN_HEADER.format(shows=len({e["sourceName"] for e in episodes}),
@@ -1455,10 +1455,10 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
         f'<span class="nm">{esc(name)}</span><span class="num">{number}</span></button>'
         for name, number in sorted(per_show.items(), key=lambda pair: (-pair[1], pair[0].lower())))
     drawer = LISTEN_DRAWER.format(net_rows=net_rows)
-    return (f"""{head}<h1 class="vh">upsy.si \u2014 listening</h1>{header}{drawer}
+    return (f"""{head}<h1 class="vh">upsy.si \u2014 podcasts</h1>{header}{drawer}
 <main>
   <div class="listen-list">
-    <h1>listening</h1>
+    <h1>Podcasts</h1>
     <p class="brief">Podcast episodes from shows that publish a transcript or a description worth
     reading. The player is the browser's own, and the file is asked for only when you press play.</p>
     {body}

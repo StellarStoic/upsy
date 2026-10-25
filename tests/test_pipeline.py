@@ -922,7 +922,7 @@ class StoryPageFurniture(unittest.TestCase):
 
     def test_an_episode_goes_back_to_the_listening_feed(self):
         page = self.page()
-        self.assertIn('<a class="back" href="/listen.html">&larr; listening</a>', page)
+        self.assertIn('<a class="back" href="/listen.html">&larr; Podcasts</a>', page)
         self.assertIn('<a class="crumb" href="/">the wire</a>', page)
         self.assertNotIn('<a class="back" href="/">', page)
 
@@ -939,7 +939,7 @@ class StoryPageFurniture(unittest.TestCase):
 
     def test_the_foot_of_the_page_agrees_with_the_top(self):
         episode = self.page()
-        self.assertIn('<a href="/listen.html">&larr; back to listening</a>', episode)
+        self.assertIn('<a href="/listen.html">&larr; back to Podcasts</a>', episode)
         story = self.page(kind="news", audio="", duration=0)
         self.assertIn('<a href="/">&larr; back to upsy.si</a>', story)
 
