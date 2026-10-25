@@ -1279,6 +1279,27 @@ class EpisodeAdmission(unittest.TestCase):
     def test_a_news_item_is_never_thin(self):
         self.assertFalse(fetcher.episode_is_thin({"kind": "news"}, {"kind": "news", "summary": ""}))
 
+    def test_the_title_gate_names_the_subject_and_its_synonyms(self):
+        terms = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        gate = next(source for source in terms if source["id"] == "decoder")["require_title"]
+        for title in ("Sam Altman on superintelligence", "How agentic workflows break",
+                      "Llama 4 and open weights", "Benchmarking the new frontier model",
+                      "Attention is all you need: the paper", "A survey of model training",
+                      "Deep learning for weather read the arxiv preprint"):
+            self.assertTrue(fetcher.title_hits({"require_title": gate}, {"title": title}), title)
+        for title in ("A pottery masterclass", "Why inflation is sticky", "The again and again economy"):
+            self.assertFalse(fetcher.title_hits({"require_title": gate}, {"title": title}), title)
+
+    def test_dwarkesh_is_back_and_the_exception_is_written_down(self):
+        sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        dwarkesh = next(source for source in sources if source["id"] == "dwarkesh")
+        self.assertEqual(dwarkesh["minDescriptionChars"], 80)
+        self.assertIn("exception", dwarkesh["note"])
+        short = {"kind": "podcast", "summary": "x" * 90, "transcript": ""}
+        self.assertFalse(fetcher.episode_is_thin(dwarkesh, short))
+        # and another show with the same feed is still refused
+        self.assertTrue(fetcher.episode_is_thin({"kind": "podcast"}, short))
+
     def test_the_general_shows_are_title_gated_and_only_two_are_throttled(self):
         sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
         gated = {s["id"] for s in sources if s.get("require_title")}
