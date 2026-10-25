@@ -695,10 +695,13 @@ CSS = """
     .rows { border-right:0; }
     .row { grid-template-columns:56px minmax(0,1fr); padding:11px 14px; }
     .row .thumb { display:none; }
-    .listen-item .thumb { width:64px; height:64px; flex:0 0 64px; }
-    .listen-item .thumb.tile span, .listen-row .thumb.tile span { font-size:16px; }
-    .listen-row .thumb { width:44px; height:44px; }
-    .listen-row { grid-template-columns:1fr 44px; }
+    /* A phone gets the words and no thumbnails, in the lists as on the wire: a cover beside a headline
+       costs a third of the width and says less than the feed's name, which is already in the kicker. */
+    .listen-item .thumb, .listen-row .thumb { display:none; }
+    .listen-row { grid-template-columns:1fr; }
+    /* the one exception is an episode's own page, where the cover is the show's identity: smaller, not gone */
+    .story.episode .lead.tile { width:180px; height:180px; }
+    .story.episode .lead.tile span { font-size:44px; }
     header.top, .bar { padding-left:14px; padding-right:14px; }
     .status { width:100%; margin-left:0; }
     /* The status line takes a row of its own on a phone, which drops the icon onto the next

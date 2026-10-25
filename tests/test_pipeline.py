@@ -1766,3 +1766,11 @@ class NoEmptyCards(unittest.TestCase):
         source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
         self.assertIn("grid-template-columns:1fr 56px", source)
         self.assertIn("grid-column:2; grid-row:1 / span 2", source)
+
+    def test_a_phone_gets_no_thumbnails_in_the_lists(self):
+        page = self.listen_page()
+        mobile = re.search(r"@media \(max-width:920px\).*?\n  \}", page, re.S).group(0)
+        self.assertIn(".listen-item .thumb, .listen-row .thumb { display:none; }", mobile)
+        self.assertIn(".listen-row { grid-template-columns:1fr; }", mobile)
+        # an episode's own page keeps its cover, smaller
+        self.assertIn(".story.episode .lead.tile { width:180px; height:180px; }", mobile)
