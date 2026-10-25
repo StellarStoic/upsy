@@ -1672,3 +1672,20 @@ class PicturesSayWhy(unittest.TestCase):
             attached = build_site.attach_shots([item], 10, site, shots)
             self.assertEqual(attached, 1)
             self.assertTrue(item["imageLocal"].startswith("/img/"))
+
+    def test_a_block_page_is_recognised_by_its_own_words(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import screenshots
+        for page in ("<h1>Sorry, you have been blocked</h1><p>You are unable to access techmeme.com</p>",
+                     "<title>Attention Required! | Cloudflare</title>",
+                     "<p>Please turn on JavaScript to continue. Checking your browser.</p>",
+                     "<p>Our systems have detected unusual traffic from your computer network.</p>"):
+            self.assertTrue(screenshots.blocked_reason(page), page[:40])
+        for page in ("<h1>A new benchmark measures experiment design</h1><p>Body text.</p>",
+                     "<p>Access to the archive is free.</p>"):
+            self.assertEqual(screenshots.blocked_reason(page), "", page[:40])
+
+    def test_two_shots_of_the_same_page_are_one_too_many(self):
+        source = pathlib.Path("tools/screenshots.py").read_text(encoding="utf-8")
+        self.assertIn("the same page as another shot", source)
+        self.assertIn("dropped a repeated shot", source)

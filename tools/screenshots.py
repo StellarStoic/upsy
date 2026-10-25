@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,52 @@ def unpictured_urls() -> set:
     except Exception:                                  # noqa: BLE001 - a missing list is not a failure
         return set()
     return set(record.get("unpictured") or [])
+
+
+# What a site answers when it does not mean to show you the page. The render is not blank, so the size
+# gate passes it, and the card ends up illustrated with "Sorry, you have been blocked" - measured on
+# techmeme.com, whose block page became two cards' picture before anyone noticed.
+BLOCK_MARKERS = (
+    "you have been blocked", "you are unable to access", "access denied", "request blocked",
+    "request unsuccessful", "unusual traffic from your", "are you a robot", "verify you are human",
+    "checking your browser", "attention required", "complete the captcha", "solve the captcha",
+    "captcha verification", "enable javascript and cookies to continue", "403 forbidden",
+    "this page is not available in your", "access to this page has been denied",
+)
+
+
+def blocked_reason(text: str) -> str:
+    """The phrase that says this is a refusal page rather than an article, if there is one.
+
+    Read against the page's *visible* words: every site in the world ships a `grecaptcha-badge` class and
+    a "captcha" string in its stylesheet, and matching the raw html refused a perfectly good Alignment
+    Forum article on the strength of a CSS rule.
+    """
+    if not text:
+        return ""
+    visible = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
+    visible = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", visible)).lower()
+    for marker in BLOCK_MARKERS:
+        if marker in visible:
+            return marker
+    return ""
+
+
+def probe(url: str, timeout: int = 12) -> tuple[int, str]:
+    """Ask for the page before rendering it: a site that blocks us must cost one request, not a picture."""
+    import urllib.error
+    import urllib.request
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
+                                                  "Accept": "text/html,application/xhtml+xml"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status = response.status
+            body = response.read(250_000).decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, "http %s" % exc.code
+    except Exception as exc:                           # noqa: BLE001 - a failed probe is not fatal
+        return 0, type(exc).__name__
+    return status, blocked_reason(body)
 
 
 def select(items: list[dict], shots: dict, failures: dict, limit: int, most: int,
@@ -173,6 +220,8 @@ def main() -> int:
     parser.add_argument("--budget", type=int, default=420, help="seconds for the whole run")
     parser.add_argument("--force", action="store_true", help="re-shoot anything already shot")
     parser.add_argument("--dry-run", action="store_true", help="list what would be shot, shoot nothing")
+    parser.add_argument("--verify", type=int, default=40,
+                        help="re-check this many shots already taken, dropping block pages and repeats")
     args = parser.parse_args()
 
     if not NEWS.exists():
@@ -183,6 +232,46 @@ def main() -> int:
     failures: dict = shots.pop(".failures", {}) if isinstance(shots.get(".failures"), dict) else {}
 
     today = dt.datetime.now(dt.timezone.utc).date()
+
+    # A shot already taken can be a block page - the render is not blank, so nothing refused it. The page
+    # is asked for again here: if it now says we are blocked, the picture goes and the url joins the
+    # refusals. Two shots with identical bytes are the same page by definition, and one of them is a lie.
+    if args.verify and not args.dry_run:
+        checked = dropped = 0
+        for url, record in list(shots.items()):
+            if url.startswith(".") or not isinstance(record, dict) or not record.get("file"):
+                continue
+            path = SHOTS / record["file"]
+            if not path.exists() or checked >= args.verify:
+                continue
+            checked += 1
+            _status, reason = probe(url)
+            if reason:
+                path.unlink(missing_ok=True)
+                shots.pop(url, None)
+                failures[url] = today.isoformat()
+                dropped += 1
+                print(f"   dropped a shot of {reason} :: {url[:64]}")
+        seen: dict[str, str] = {}
+        for url, record in list(shots.items()):
+            if url.startswith(".") or not isinstance(record, dict) or not record.get("file"):
+                continue
+            path = SHOTS / record["file"]
+            if not path.exists():
+                continue
+            mark = hashlib.sha1(path.read_bytes()).hexdigest()
+            if mark in seen:
+                path.unlink(missing_ok=True)
+                shots.pop(url, None)
+                failures[url] = today.isoformat()
+                dropped += 1
+                print(f"   dropped a repeated shot :: {url[:64]}")
+            else:
+                seen[mark] = url
+        if checked or dropped:
+            print(f"   verified {checked} shot(s), dropped {dropped}")
+            save(shots)
+
     todo = select(items, shots, failures, args.limit, args.max, today, args.force, unpictured_urls())
     print(f"{len(items)} story(ies); {sum(1 for i in items if i.get('image'))} already have a picture; "
           f"{len(todo)} need a screenshot")
@@ -212,6 +301,12 @@ def main() -> int:
     print(f"   using {browser}")
 
     SHOTS.mkdir(parents=True, exist_ok=True)
+    picture_digests: dict[str, str] = {}
+    for existing in SHOTS.glob("*.png"):
+        try:
+            picture_digests[hashlib.sha1(existing.read_bytes()).hexdigest()] = existing.name
+        except OSError:
+            continue
     started = dt.datetime.now()
     taken = refused = 0
     for item in todo:
@@ -220,7 +315,25 @@ def main() -> int:
             break
         url = item["url"]
         out = SHOTS / (digest(url) + ".png")
+        status, refused_because = probe(url)
+        if refused_because:
+            failures[url] = today.isoformat()
+            refused += 1
+            print(f"   skip {item.get('sourceName', '?')[:22]:<22} {refused_because} :: {url[:60]}")
+            continue
         ok, why = shoot(browser, url, out, args.width, args.height, args.wait_ms, args.timeout)
+        if ok and out.exists():
+            # Two stories cannot have the same picture. When they do, it is the site's block page or a
+            # challenge screen rendered once per url - the bytes are identical because the page is.
+            same = picture_digests.get(hashlib.sha1(out.read_bytes()).hexdigest())
+            if same:
+                out.unlink(missing_ok=True)
+                failures[url] = today.isoformat()
+                refused += 1
+                print(f"   skip {item.get('sourceName', '?')[:22]:<22} the same page as another shot "
+                      f":: {url[:50]}")
+                continue
+            picture_digests[hashlib.sha1(out.read_bytes()).hexdigest()] = url
         if ok:
             shots[url] = {"file": out.name, "date": today.isoformat(),
                           "source": item.get("sourceName", "")}

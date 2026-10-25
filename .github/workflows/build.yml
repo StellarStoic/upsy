@@ -77,7 +77,7 @@ jobs:
       # shot once. continue-on-error is deliberate: no browser, no screenshots, no problem.
       - name: screenshot the stories with no picture
         continue-on-error: true
-        run: python3 tools/screenshots.py --max 60
+        run: python3 tools/screenshots.py --max 60 --verify 40
 
       - name: build the site
         run: python3 tools/build_site.py
