@@ -785,6 +785,68 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
 ARTICLE_CACHE: dict[str, dict] = {}
 
 
+# What a page says when it does not mean to give you the article. Every pattern here is a statement
+# about access, not a marketing word: "Subscribe" in a masthead means nothing, "subscribe to continue
+# reading" means the rest of the piece does not exist for us. The schema.org flag is the strongest of
+# them - a publisher that sets isAccessibleForFree to false is telling machines, on purpose, that the
+# text is behind a wall - and paywall-vendor scripts are the machinery of the same thing.
+PAYWALL_MARKERS = (
+    ("says it is not free to read", re.compile(r'"isAccessibleForFree"\s*:\s*"?false', re.I)),
+    ("is marked locked or metered", re.compile(r'article:content_tier"\s+content="(?:locked|metered|premium)"', re.I)),
+    ("asks you to subscribe to continue", re.compile(
+        r"(?:subscribe|sign up|register)[^.<]{0,60}to (?:continue|keep|read) (?:reading|the)", re.I)),
+    ("says it is for subscribers", re.compile(
+        r"\bthis (?:article|story|post) is (?:for|only for|exclusive to) (?:paid )?subscribers\b"
+        r"|\bsubscriber[- ]only\b|\bsubscribers only\b|\bexclusive to subscribers\b", re.I)),
+    ("says it is for paid subscribers", re.compile(r"\bfor paid subscribers\b", re.I)),
+    ("counts a free-article limit", re.compile(
+        r"\byou(?:'ve| have) reached (?:your|the) (?:limit|free)|\bfree articles? (?:left|remaining)\b", re.I)),
+    ("asks you to unlock the article", re.compile(
+        r"\bunlock (?:this (?:article|story)|the full (?:article|story))\b", re.I)),
+    ("asks you to become a member to read", re.compile(
+        r"\bbecome a (?:member|subscriber) to (?:read|continue|access|unlock)\b", re.I)),
+    ("runs paywall infrastructure", re.compile(
+        r"(?:tinypass|piano\.io|poool\.fr|zephr\.com|sophi\.io|paywall[-_]?script|data-paywall)", re.I)),
+)
+
+
+PAYWALL_READABLE_WORDS = 400   # an article this long is readable, whatever the page advertises
+
+
+def page_words(page: str) -> int:
+    """How many words of article a page shows - paragraphs, not furniture.
+
+    A walled page still renders a masthead, a menu, related links and a footer, and on a big publisher
+    that furniture alone runs past four hundred words. So the count comes from paragraphs with the
+    furniture removed: FT's wall would otherwise look like a readable page because of its own chrome.
+    """
+    body = re.sub(r"<(script|style|nav|aside|footer|form|header)[^>]*>.*?</\1>", " ",
+                  page, flags=re.S | re.I)
+    paragraphs = re.findall(r"(?is)<p[^>]*>(.*?)</p>", body)
+    text = " ".join(re.sub(r"<[^>]+>", " ", paragraph) for paragraph in paragraphs)
+    return len(text.split())
+
+
+def paywall_reasons(page: str) -> list[str]:
+    """Which signals a page carries that say the article is behind a wall.
+
+    The signals alone do not make a wall. The Verge runs Zephr and tells schema.org its articles are not
+    free to read, and then hands over four thousand words; The Decoder shows Log In / Register / Subscribe
+    on every page and hands over sixteen hundred. What settles it is whether the piece is there: a page
+    that names a subscription *and* shows under 400 words is walled, and a page that shows the article is
+    not, whatever its marketing says.
+    """
+    if not page:
+        return []
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", page, flags=re.S)
+    plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text))
+    found = [name for name, pattern in PAYWALL_MARKERS
+             if pattern.search(page) or pattern.search(plain)]
+    if found and page_words(page) >= PAYWALL_READABLE_WORDS:
+        return []           # the article is here, so there is no wall to respect
+    return found
+
+
 def enrich_article(url: str, cache: dict[str, dict], budget: list[int]) -> dict:
     """An article page asked for one thing only: what the feed did not already give us."""
     if url in cache:
@@ -818,6 +880,9 @@ def enrich_article(url: str, cache: dict[str, dict], budget: list[int]) -> dict:
             img_alt = re.search(r"""(?is)<meta[^>]+property=["']og:image:alt["'][^>]+content=["']([^"']+)["']""", head)
             if img_alt:
                 found["image_alt"] = html.unescape(img_alt.group(1)).strip()
+            walls = paywall_reasons(page)
+            if walls:
+                found["paywalled"] = walls
     except Exception as exc:  # noqa: BLE001 - enrichment is best effort, never fatal
         found["error"] = f"{type(exc).__name__}"
     ARTICLE_CACHE[url] = found
@@ -1133,6 +1198,40 @@ def run(args: argparse.Namespace) -> int:
                 item["url"] = extra["canonical"]
                 item["id"] = hashlib.sha1(item["url"].encode("utf-8")).hexdigest()[:16]
         log(f"enriched {len(wanted)} article(s), {MAX_ARTICLES_PER_RUN - budget[0]} request(s) spent")
+
+    # A subscribed article is not an article we can offer. Drop it here, after every source has had its
+    # say and after the article pages have been read, so a wall found in a feed and a wall found on a page
+    # are handled by the same rule. The sources that do it habitually are named in the summary rather
+    # than left to look like ordinary filtering.
+    walled: dict[str, int] = {}
+    kept: list[dict] = []
+    for item in items:
+        reasons = list(item.pop("paywalled", []) or [])
+        extra = article_cache.get(item["url"]) or {}
+        for reason in extra.get("paywalled", []) or []:
+            if reason not in reasons:
+                reasons.append(reason)
+        if not reasons:
+            feed_text = " ".join(filter(None, [item.get("summary"), item.get("content")]))
+            reasons = [r for r in paywall_reasons(feed_text) if "infrastructure" not in r]
+        if reasons:
+            walled[item["source"]] = walled.get(item["source"], 0) + 1
+            continue
+        kept.append(item)
+    if walled:
+        log("dropped %d subscribed article(s): %s" % (
+            sum(walled.values()), ", ".join("%s %d" % pair for pair in sorted(walled.items(), key=lambda x: -x[1])[:6])))
+        for source_id, count in sorted(walled.items(), key=lambda pair: -pair[1]):
+            for record in health:
+                if record["id"] == source_id:
+                    record["walled"] = count
+                    # A source that walls most of what it publishes is not a source: it is an advert for a
+                    # subscription. Say so loudly instead of quietly filtering it forever, because the
+                    # decision to drop it belongs in sources.json and not in a heuristic.
+                    if count >= 3 and count * 2 >= record.get("items", 0):
+                        log("!! %s walls %d of its %d items - consider removing the source" % (
+                            source_id, count, record.get("items", 0)))
+    items = kept
 
     # Whatever the article cache already knows still counts, even on a run that fetches nothing new:
     # otherwise --no-articles quietly strips the images and summaries earlier runs paid for.

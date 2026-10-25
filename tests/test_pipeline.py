@@ -1242,6 +1242,36 @@ class ListeningCap(unittest.TestCase):
         self.assertEqual(len(payload["items"]), 18)
 
 
+class NoSubscriptions(unittest.TestCase):
+    """An article behind a wall is not an article."""
+
+    def test_a_short_page_that_names_a_subscription_is_walled(self):
+        page = ("<nav><a href=/subscribe>Subscribe</a></nav><h1>Title</h1>"
+                "<p>This article is for subscribers only.</p><p>Two lines of teaser.</p>")
+        self.assertIn("says it is for subscribers", fetcher.paywall_reasons(page))
+
+    def test_a_long_article_is_not_walled_by_its_own_marketing(self):
+        # The Verge runs Zephr and declares isAccessibleForFree false, then hands over the whole piece.
+        page = ('<script>{"isAccessibleForFree": false}</script><nav>Subscribe now</nav><p>'
+                + "word " * 1200 + "</p>")
+        self.assertEqual(fetcher.paywall_reasons(page), [])
+
+    def test_a_masthead_subscribe_link_means_nothing(self):
+        page = "<nav><a href=/subscribe>Subscribe</a><a href=/login>Sign In</a></nav><p>Body.</p>"
+        self.assertEqual(fetcher.paywall_reasons(page), [])
+
+    def test_the_schema_flag_alone_does_not_condemn_a_page(self):
+        self.assertEqual(fetcher.paywall_reasons(
+            '<meta property="article:content_tier" content="metered">' + "<p>" + "word " * 900 + "</p>"), [])
+
+    def test_a_paid_substack_teaser_in_a_feed_is_walled(self):
+        feed_text = "The first two paragraphs. This post is for paid subscribers."
+        self.assertIn("says it is for paid subscribers", fetcher.paywall_reasons(feed_text))
+
+    def test_an_ordinary_summary_is_left_alone(self):
+        self.assertEqual(fetcher.paywall_reasons("A paper on model routing, 12 pages."), [])
+
+
 class EpisodeAdmission(unittest.TestCase):
     """A general show, and an episode nobody would press play on."""
 
