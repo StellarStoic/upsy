@@ -1068,7 +1068,7 @@ class ListeningShows(PodcastSite):
 
     def test_every_episode_row_names_a_show_the_drawer_can_filter_by(self):
         page = (self.site / "listen.html").read_text(encoding="utf-8")
-        rows = re.findall(r'<article class="listen-item" data-src="([^"]+)"', page)
+        rows = re.findall(r'<article class="listen-item"[^>]*data-src="([^"]+)"', page)
         net = re.findall(r'<button type="button" class="net-item" data-src="([^"]+)"', page)
         self.assertEqual(len(rows), 1)
         self.assertEqual(set(rows), set(net))
@@ -1505,6 +1505,46 @@ class WalledArticlesAreDropped(unittest.TestCase):
                      "<p>1) a</p><p>2) b</p><p>3) c</p>",
                      '<p>See <a href="https://x/1)">this</a></p>'):
             self.assertEqual(build_site.numbered_lines(html), html)
+
+
+class OpenedMarks(unittest.TestCase):
+    """An opened item gains a rail down its left edge."""
+
+    def listen_page(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"kind": "podcast", "audio": "https://cdn.example.com/e.mp3", "duration": 1800})
+        return build_site.build_listen([item], build_site.datetime.now(build_site.timezone.utc), {})
+
+    def test_the_list_carries_ids_and_the_marker(self):
+        page = self.listen_page()
+        self.assertIn('data-id="ep1"', page)
+        self.assertIn('id="read-marks"', page)
+        self.assertIn("upsy:opened", page)
+
+    def test_the_rail_is_a_shadow_so_nothing_shifts(self):
+        self.assertIn(".row.is-read", build_site.CSS)
+        self.assertIn(".listen-item.is-read", build_site.CSS)
+        self.assertIn("box-shadow: inset 3px 0 0 var(--dim2)", build_site.CSS)
+        self.assertNotIn("border-left:3px", build_site.CSS)
+
+    def test_the_headline_is_softened_but_still_comes_back_on_hover(self):
+        self.assertIn(".row.is-read h2 a, .listen-item.is-read h2 a { color:#a6aab2; }", build_site.CSS)
+        self.assertIn(".row.is-read h2 a:hover, .listen-item.is-read h2 a:hover { color:var(--link); }",
+                      build_site.CSS)
+
+    def test_a_story_page_marks_the_item_it_shows(self):
+        page = build_site.build_story(StoryPageFurniture.ITEM, [],
+                                      build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertIn('id="read-mark"', page)
+        self.assertIn('id="ep1"', page)
+        self.assertIn("upsy:opened", page)
+
+    def test_the_marker_is_stored_locally_and_nowhere_else(self):
+        page = self.listen_page()
+        marker = page.split('id="read-marks"')[1]
+        self.assertIn("localStorage", marker)
+        for leak in ("fetch(", "XMLHttpRequest", "navigator.sendBeacon"):
+            self.assertNotIn(leak, marker)
 
 
 class ScrollMemory(unittest.TestCase):

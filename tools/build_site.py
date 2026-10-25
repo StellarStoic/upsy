@@ -524,6 +524,12 @@ CSS = """
   .story-top .crumb { font-size:12px; color:var(--dim); text-decoration:none; }
   .story-top .crumb:hover { color:var(--link); }
   /* An episode is listened to, not read line by line: centred, with the player in the middle. */
+  /* An opened item keeps its place and gains a rail down its left edge, with the headline softened to
+     roughly three quarters strength. Scannable as a column, quiet enough to ignore, and it survives a
+     row without a picture. The rail is an inset shadow, so nothing shifts when it appears. */
+  .row.is-read, .listen-item.is-read { box-shadow: inset 3px 0 0 var(--dim2); }
+  .row.is-read h2 a, .listen-item.is-read h2 a { color:#a6aab2; }
+  .row.is-read h2 a:hover, .listen-item.is-read h2 a:hover { color:var(--link); }
   .story.episode { text-align:center; }
   /* An episode's artwork is a thumbnail, not a banner: it identifies the show, the words are the page. */
   .story.episode img.lead { width:auto; max-width:300px; max-height:300px; margin:14px auto;
@@ -646,7 +652,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     trace = " ".join(f"<i>{esc(t)}</i>" for t in ((item.get("aiTerms") or [])[:2] + (item.get("siTerms") or [])[:3]))
     dek = f'<p class="dek">{esc(truncate(item["summary"], 190))}</p>' if item.get("summary") else ""
     meter = min(100.0, max(5.0, float(item["score"]) * 0.7))
-    return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
+    return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-id="{esc(item['id'])}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
   <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span><span class="tip" aria-hidden="true"><b>How energy is counted</b>freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>AI terms in headline and summary: up to <em>+15</em><br>picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline <em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further outlet running the same story<br>the bar is score &times; 0.7</span></div>
   <div>
     <div class="src"><a class="who" href="/s/{esc(item['id'])}/">{esc(item['sourceName'])}</a><span>{age(item.get('published'), now)} ago</span>{''.join(tags)}</div>
@@ -994,6 +1000,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
 }})();
 </script>
 {SCROLL_JS}
+{READ_JS}
 </body></html>
 """
 
@@ -1082,6 +1089,63 @@ LISTEN_DRAWER = """<div class="net-backdrop" id="net-backdrop"></div>
   <div class="net" id="net">{net_rows}</div>
   <p class="net-all"><a href="/sources.html">every source &amp; the method</a></p>
 </aside>"""
+
+READ_JS = """<script id="read-marks">
+(function () {
+  // What you have already opened, kept in this browser only: no account, nothing sent anywhere. The mark
+  // is read when the list renders and again whenever rows are added, because the wire loads the rest of
+  // itself after the first paint.
+  var KEY = 'upsy:opened';
+  var CAP = 400;
+  function read() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      return Object.prototype.toString.call(list) === '[object Array]' ? list : [];
+    } catch (e) { return []; }
+  }
+  function write(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list.slice(-CAP))); } catch (e) {}
+  }
+  function remember(id) {
+    if (!id) return;
+    var list = read();
+    if (list[list.length - 1] === id) return;
+    var at = list.indexOf(id);
+    if (at > -1) list.splice(at, 1);
+    list.push(id);
+    write(list);
+  }
+  function paint() {
+    var opened = read();
+    var rows = document.querySelectorAll('[data-id]');
+    if (!opened.length || !rows.length) return;
+    var seen = {};
+    for (var i = 0; i < opened.length; i++) seen[opened[i]] = 1;
+    for (var j = 0; j < rows.length; j++) {
+      var id = rows[j].getAttribute('data-id');
+      if (seen[id]) rows[j].classList.add('is-read');
+    }
+  }
+  paint();
+  if (window.MutationObserver) {
+    new MutationObserver(paint).observe(document.body, { childList: true, subtree: true });
+  }
+  // A card's headline goes straight to the publisher, so a click is the only evidence we get for it.
+  document.addEventListener('click', function (event) {
+    var node = event.target;
+    while (node && node !== document.body) {
+      if (node.getAttribute && node.getAttribute('data-id')) {
+        remember(node.getAttribute('data-id'));
+        node.classList.add('is-read');
+        return;
+      }
+      node = node.parentNode;
+    }
+  }, true);
+})();
+</script>"""
+
 
 SCROLL_JS = """<script id="scroll-memory">
 (function () {
@@ -1444,6 +1508,14 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     is_episode = item.get("kind") == "podcast"
     cta_label = (f"the episode at {esc(item['sourceName'])}" if is_episode
                  else f"read the original at {esc(item['sourceName'])}")
+    # Reaching this page is the moment the item is "opened". A card's headline leads to the publisher
+    # instead, which is why the list also remembers a click; this covers the source link and every
+    # episode row, which land here.
+    opened_js = ("<script id=\"read-mark\">(function(){var KEY='upsy:opened',CAP=400,id="
+                 + json.dumps(item["id"]) + ";try{var raw=localStorage.getItem(KEY);"
+                 "var list=raw?JSON.parse(raw):[];if(Object.prototype.toString.call(list)!=='[object Array]')list=[];"
+                 "var at=list.indexOf(id);if(at>-1)list.splice(at,1);list.push(id);"
+                 "localStorage.setItem(KEY,JSON.stringify(list.slice(-CAP)));}catch(e){}})();</script>")
     ld = json.dumps({
         "@context": "https://schema.org", "@type": "PodcastEpisode" if is_episode else "NewsArticle",
         "headline": truncate(item["title"], 110),
@@ -1489,6 +1561,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
   </div>
 </main>
 {episode_js}
+{opened_js}
 {footer()}
 <script type="application/ld+json">{ld}</script>
 </body></html>
@@ -1521,7 +1594,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
         badges = (['<span class="badge">transcript</span>']
               if episode.get("transcript") or episode.get("transcriptText") else [])
         when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
-        rows.append(f'<article class="listen-item" data-src="{src_key(episode["sourceName"])}">\n'
+        rows.append(f'<article class="listen-item" data-id="{esc(episode["id"])}" data-src="{src_key(episode["sourceName"])}">\n'
                     f'      <div class="kicker"><span>{esc(episode["sourceName"])}</span>'
                     f'<span>{esc(when)}</span>' + (f'<span>{esc(length)}</span>' if length else "")
                     + "".join(badges) + '</div>\n'
@@ -1572,6 +1645,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
 {footer(len(episodes), len({e['sourceName'] for e in episodes}))}
 {LISTEN_JS}
 {SCROLL_JS}
+{READ_JS}
 </body></html>
 """)
 
