@@ -574,6 +574,50 @@
       "note": "no feed: /papers/feed.xml answers 401"
     },
     {
+      "id": "aidailybrief",
+      "name": "The AI Daily Brief",
+      "url": "https://anchor.fm/s/f7cac464/podcast/rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://aidailybrief.ai/",
+      "fetchArticle": false,
+      "note": "Nathaniel Whittemore's daily AI news, 1120 episodes - the biggest catalogue here, and the reason the listening page caps each show. Verified 2026-10-24."
+    },
+    {
+      "id": "aiengineer",
+      "name": "The AI Engineer Podcast",
+      "url": "https://rss.art19.com/the-ai-engineer-podcast",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.ai.engineer/",
+      "fetchArticle": false,
+      "note": "Engineering practice around models, 595 episodes. Verified 2026-10-24."
+    },
+    {
+      "id": "bigtechnology",
+      "name": "Big Technology Podcast",
+      "url": "https://feeds.megaphone.fm/LI3617121267",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.bigtechnology.com/",
+      "fetchArticle": false,
+      "note": "Alex Kantrowitz's tech interviews, AI often; 575 episodes. Verified 2026-10-24."
+    },
+    {
+      "id": "chinatalk-podcast",
+      "name": "ChinaTalk Podcast",
+      "url": "https://feeds.megaphone.fm/CHTAL4990341033",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.chinatalk.media/",
+      "fetchArticle": false,
+      "note": "China and AI policy at length, 579 episodes. The written ChinaTalk is already a news source here; episodes are separate items, and near-identical titles are dropped by the overlap rule. Verified 2026-10-24."
+    },
+    {
       "id": "cognitiverevolution",
       "name": "The Cognitive Revolution",
       "url": "https://feeds.megaphone.fm/RINTP3108857801",
@@ -583,6 +627,17 @@
       "homepage": "https://www.cognitiverevolution.ai/",
       "fetchArticle": false,
       "note": "AI founders and researchers at length; every episode with a long description (checked 2026-10-24)"
+    },
+    {
+      "id": "deepmind-podcast",
+      "name": "Google DeepMind: The Podcast",
+      "url": "https://feeds.simplecast.com/JT6pbPkg",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://deepmind.google/discover/the-podcast/",
+      "fetchArticle": false,
+      "note": "The lab's own voice, 52 episodes, every one described. The written DeepMind blog is a separate news source here. Verified 2026-10-24."
     },
     {
       "id": "dwarkesh",
@@ -596,6 +651,28 @@
       "note": "long interviews with lab researchers and economists (checked 2026-10-24)"
     },
     {
+      "id": "eyeonai",
+      "name": "Eye On A.I.",
+      "url": "https://rss.libsyn.com/shows/123267/destinations/727317.xml",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.eye-on.ai/",
+      "fetchArticle": false,
+      "note": "Craig Smith's interviews with researchers and AI executives; 388 episodes, 369 long descriptions. Their Squarespace feed returns nothing. Verified 2026-10-24."
+    },
+    {
+      "id": "futureoflife",
+      "name": "Future of Life Institute Podcast",
+      "url": "https://feeds.transistor.fm/future-of-life-institute-podcast-4e4d1fa5-a878-4cb2-91be-91c3ce266dfd",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://futureoflife.org/podcast/",
+      "fetchArticle": false,
+      "note": "Existential risk and AI governance, squarely on this wire's subject; 280 episodes. Verified 2026-10-24."
+    },
+    {
       "id": "hardfork",
       "name": "Hard Fork",
       "url": "https://feeds.simplecast.com/l2i9YnTd",
@@ -605,6 +682,17 @@
       "homepage": "https://www.nytimes.com/column/hard-fork",
       "fetchArticle": false,
       "note": "technology and AI, every episode with a 1-2 kB description (checked 2026-10-24)"
+    },
+    {
+      "id": "interconnects-podcast",
+      "name": "Interconnects (podcast)",
+      "url": "https://api.substack.com/feed/podcast/48206.rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.interconnects.ai/",
+      "fetchArticle": false,
+      "note": "Nathan Lambert talking rather than writing: 166 episodes, 157 described. The newsletter is a separate news source here. Verified 2026-10-24."
     },
     {
       "id": "lastweekinai",
@@ -629,6 +717,39 @@
       "note": "engineers building with models; 239 of 284 episodes carry a WebVTT transcript (checked 2026-10-24)"
     },
     {
+      "id": "madpodcast",
+      "name": "The MAD Podcast",
+      "url": "https://anchor.fm/s/f2ee4948/podcast/rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://mattturck.com/podcast/",
+      "fetchArticle": false,
+      "note": "Matt Turck on how AI actually gets built; 135 episodes, 126 described. Verified 2026-10-24."
+    },
+    {
+      "id": "mlst",
+      "name": "Machine Learning Street Talk",
+      "url": "https://anchor.fm/s/1e4a0eac/podcast/rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.mlst.ai/",
+      "fetchArticle": false,
+      "note": "271 episodes, every one described at length; their own site feed is dead, the Anchor one is live. Verified 2026-10-24."
+    },
+    {
+      "id": "msresearch",
+      "name": "Microsoft Research Podcast",
+      "url": "https://feeds.blubrry.com/feeds/microsoftresearch.xml",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://www.microsoft.com/en-us/research/podcast/",
+      "fetchArticle": false,
+      "note": "200 episodes, 76 with a Podcasting 2.0 transcript - the only show in this batch that publishes them. Verified 2026-10-24."
+    },
+    {
       "id": "nopriors",
       "name": "No Priors",
       "url": "https://feeds.megaphone.fm/nopriors",
@@ -651,6 +772,17 @@
       "note": "practitioners' show; 73 of 379 episodes carry a transcript, the rest long descriptions (checked 2026-10-24)"
     },
     {
+      "id": "thursdai",
+      "name": "ThursdAI",
+      "url": "https://api.substack.com/feed/podcast/1801228.rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://thursdai.news/",
+      "fetchArticle": false,
+      "note": "A weekly roundup of the week in AI; 181 episodes, every one described. Verified 2026-10-24."
+    },
+    {
       "id": "twiml",
       "name": "TWIML AI Podcast",
       "url": "https://twimlai.com/feed/podcast/",
@@ -660,6 +792,17 @@
       "homepage": "https://twimlai.com/podcast/",
       "fetchArticle": false,
       "note": "research-heavy interview show, 512 of 799 episodes have a full description (checked 2026-10-24)"
+    },
+    {
+      "id": "weaviate",
+      "name": "Weaviate Podcast",
+      "url": "https://anchor.fm/s/cffc3468/podcast/rss",
+      "category": "podcast",
+      "kind": "podcast",
+      "tier": 2,
+      "homepage": "https://weaviate.io/podcast",
+      "fetchArticle": false,
+      "note": "Retrieval and vector search, 148 episodes. Verified 2026-10-24."
     },
     {
       "id": "aibusiness",

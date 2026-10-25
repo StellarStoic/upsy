@@ -365,6 +365,8 @@ CSS = """
   .listen-item h2 a:hover { color:var(--link); }
   .listen-item .dek { color:var(--dim); font-size:13px; margin:0 0 8px; }
   .listen-play { font-size:12px; color:var(--upsy); text-decoration:none; }
+  .listen-more { margin:22px 0 0; padding-top:14px; border-top:1px solid var(--line);
+    font-size:11.5px; color:var(--dim2); line-height:1.6; }
   .badge { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--upsy);
            border:1px solid var(--upsy); border-radius:3px; padding:0 4px; }
   .vh { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
@@ -1357,6 +1359,9 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
 """
 
 
+LISTEN_PER_SHOW = 12          # one show may occupy at most this many rows on the listening page
+
+
 def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
     """Every episode on the wire, newest first, each one leading to a page with a player on it.
 
@@ -1366,7 +1371,16 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
     """
     episodes = episodes_of(items)
     rows = []
+    seen_per_show: dict[str, int] = {}
+    trimmed: dict[str, int] = {}
     for episode in episodes:
+        show = episode["sourceName"]
+        seen_per_show[show] = seen_per_show.get(show, 0) + 1
+        if seen_per_show[show] > LISTEN_PER_SHOW:
+            # A daily show would otherwise own the top of this page. It keeps its newest handful here
+            # and every episode keeps its own page, so nothing is lost - it is just not all shown.
+            trimmed[show] = trimmed.get(show, 0) + 1
+            continue
         length = duration_label(episode.get("duration"))
         badges = ['<span class="badge">transcript</span>'] if episode.get("transcript") else []
         when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
@@ -1391,6 +1405,12 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
     header = LISTEN_HEADER.format(shows=len({e["sourceName"] for e in episodes}),
                                   episodes=len(episodes), updated=age(data_timestamp(), now))
     body = "\n    ".join(rows) or "<p>No episodes on the wire yet.</p>"
+    if trimmed:
+        hidden = sum(trimmed.values())
+        names = ", ".join(f"{esc(name)} ({count})" for name, count in sorted(trimmed.items(),
+                                                                          key=lambda pair: -pair[1]))
+        body += (f'\n    <p class="listen-more">Showing the newest {LISTEN_PER_SHOW} of each show. '
+                 f'{hidden} older episode(s) still have their own pages: {names}.</p>')
     # The drawer lists the shows, busiest first, with what each one contributed - the same idea as the
     # source network on the wire, because a reader who wants one show wants it here too.
     per_show = {}

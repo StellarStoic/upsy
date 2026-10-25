@@ -1164,3 +1164,63 @@ class PlayerFeedback(unittest.TestCase):
         item = dict(self.ITEM, kind="news", audio="", duration=0)
         page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
         self.assertNotIn('id="player-state"', page)
+
+
+class ListeningCap(unittest.TestCase):
+    """One daily show must not own the listening page."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(cls.tmp.name)
+        (root / "data").mkdir()
+        template = {
+            "url": "https://example.com/e", "source": "show", "sourceName": "Daily Show",
+            "sourceUrl": "https://example.com/feed", "sourceSite": "", "sourceCategory": "podcast",
+            "tier": 2, "summary": "A description.", "content": "A description.",
+            "contentFrom": "feed", "image": "", "imageLocal": "", "imageAlt": "", "imageFrom": "",
+            "author": "A", "score": 10.0, "breaking": False, "upsy": False, "upsyWhy": "",
+            "upsyTerms": [], "aiTerms": [], "siTerms": [], "promo": False, "question": False,
+            "kind": "podcast", "audio": "https://cdn.example.com/e.mp3", "audioType": "audio/mpeg",
+            "duration": 600, "transcript": "", "transcriptType": "", "contentHtml": "",
+        }
+        items = []
+        for n in range(15):
+            items.append({**template, "id": f"daily{n}", "title": f"Daily episode {n}",
+                          "published": f"2026-10-{15 - n:02d}T10:00:00+00:00"})
+        for n in range(3):
+            items.append({**template, "id": f"other{n}", "title": f"Other episode {n}",
+                          "source": "other", "sourceName": "Other Show",
+                          "published": f"2026-10-{14 - n:02d}T10:00:00+00:00"})
+        news = {"generated": "2026-10-16T00:00:00+00:00",
+                "counts": {"items": len(items), "sources": 2, "breaking": 0, "upsy": 0, "withImage": 0,
+                           "withFullText": 0, "new": len(items), "promo": 0}, "items": items}
+        meta = {"generated": news["generated"], "counts": news["counts"], "health": []}
+        (root / "data" / "news.json").write_text(json.dumps(news), encoding="utf-8")
+        (root / "data" / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        (root / "sources.json").write_text((ROOT / "sources.json").read_text(encoding="utf-8"),
+                                           encoding="utf-8")
+        cls._site, cls._data, cls._root = build_site.SITE, build_site.DATA, build_site.ROOT
+        build_site.SITE, build_site.DATA, build_site.ROOT = root / "_site", root / "data", root
+        build_site.CACHE_IMAGES = False
+        build_site.main()
+        cls.site = root / "_site"
+
+    @classmethod
+    def tearDownClass(cls):
+        build_site.SITE, build_site.DATA, build_site.ROOT = cls._site, cls._data, cls._root
+        cls.tmp.cleanup()
+
+    def test_one_show_is_capped_and_the_rest_appear(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        self.assertEqual(page.count("Daily episode"), 12)
+        self.assertEqual(page.count("Other episode"), 3)
+        self.assertIn("Showing the newest 12 of each show", page)
+        self.assertIn("Daily Show (3)", page)
+
+    def test_a_capped_episode_still_has_its_own_page(self):
+        self.assertTrue((self.site / "s" / "daily14" / "index.html").exists())
+
+    def test_every_episode_is_still_in_the_data_file(self):
+        payload = json.loads((self.site / "data" / "episodes.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(payload["items"]), 18)

@@ -921,6 +921,10 @@ def run(args: argparse.Namespace) -> int:
         cached = feed_cache.get(source["url"], {})
         etag = None if args.ignore_cache else cached.get("etag")
         modified = None if args.ignore_cache else cached.get("modified")
+        if not item_cache.get(source["url"]):
+            # Asking conditionally with nothing cached is how a source goes permanently silent: the
+            # feed answers 304, the revived list is empty, and no item is ever collected again.
+            etag = modified = None
         if source.get("kind") == "podcast":
             # An episode's description is rebuilt from the feed's own markup, and a cache written
             # before that markup was kept cannot produce it - a 304 would carry the old items
