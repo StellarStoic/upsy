@@ -1168,12 +1168,21 @@ def timestamp_seconds(label: str) -> int:
     return minutes * 60 + seconds
 
 
+# An agenda is one paragraph with its lines broken by <br>: "05:00 Will we run out of energy?<br> 19:00
+# Will specialised chips threaten NVIDIA's dominance?<br> ...". A block's first timestamp is not the only
+# one that means navigation - every line that *begins* with a time is an entry, and a time in the middle
+# of a line is part of the sentence.
+LINE_START = re.compile(
+    r"(?is)(<br\s*/?>|\n)(\s*)((?:<(?:span|strong|em|b|i)>)?)(\s*)"
+    r"(\(?\s*\d{1,3}:\d{2}(?::\d{2})?\s*\)?)(?=[\s&]|$|<(?![/]))")
+
+
 def chapterise(html: str) -> str:
-    """A timestamp at the start of a description block becomes a button that seeks the player.
+    """A timestamp at the start of a description line becomes a button that seeks the player.
 
     Shows publish their chapters as text ("(09:54) Weekly episode preview"), which is navigation a
-    reader can read and cannot use. Only a block's *first* timestamp is converted: a time in the middle
-    of a sentence is part of the sentence.
+    reader can read and cannot use. Only a line's *first* timestamp is converted, and only when the time
+    opens the line: a time in the middle of a sentence is part of the sentence.
     """
     def mark(match: re.Match) -> str:
         opening, space, inner, space2, label = match.groups()
@@ -1183,7 +1192,18 @@ def chapterise(html: str) -> str:
         # whatever wrapped the timestamp stays where it was; only the text becomes a button
         return (f'{opening}{space}{inner}{space2}<button type="button" class="chapter" '
                 f'data-at="{seconds}">{label.strip()}</button>&nbsp;')
-    return BLOCK_START.sub(mark, html)
+
+    def mark_after_break(match: re.Match) -> str:
+        brk, space, inner, space2, label = match.groups()
+        seconds = timestamp_seconds(label)
+        if seconds < 0:
+            return match.group(0)
+        return (f'{brk}{space}{inner}{space2}<button type="button" class="chapter" '
+                f'data-at="{seconds}">{label.strip()}</button>&nbsp;')
+
+    # the block's own opening timestamp first, then every entry that follows a line break
+    chapterised = BLOCK_START.sub(mark, html)
+    return LINE_START.sub(mark_after_break, chapterised)
 
 
 EPISODE_JS = """<script>

@@ -1471,3 +1471,22 @@ class WalledArticlesAreDropped(unittest.TestCase):
         decoder = next(s for s in sources if s["id"] == "the-decoder")
         self.assertFalse(decoder.get("enabled", True))
         self.assertIn("paywall-hidden-content", decoder["note"])
+
+    def test_every_line_of_an_agenda_becomes_a_chapter(self):
+        agenda = ("<p><strong>AGENDA:</strong></p><p>05:00 Will we run out of energy?"
+                  "<br> 19:00 Will specialised chips threaten NVIDIA's dominance?"
+                  "<br> 26:00 Can we trust AI agents more than humans?"
+                  "<br> 59:00 Why are coding agents the most overrated AI investment?</p>")
+        buttons = re.findall(r'data-at="(\d+)">([^<]+)<', build_site.chapterise(agenda))
+        self.assertEqual([int(at) for at, _ in buttons], [300, 1140, 1560, 3540])
+        # and nothing is doubled: the first line is one entry, not one as a block start and one after a break
+        self.assertEqual(len(buttons), 4)
+
+    def test_a_time_inside_a_sentence_is_still_a_sentence(self):
+        page = build_site.chapterise("<p>Then at 19:00 we will see what happens next.</p>")
+        self.assertNotIn('class="chapter"', page)
+        self.assertIn("at 19:00 we will see", page)
+
+    def test_the_agenda_heading_survives(self):
+        page = build_site.chapterise("<p><strong>AGENDA:</strong></p><p>05:00 Opening<br> 19:00 Second</p>")
+        self.assertIn("<strong>AGENDA:</strong>", page)
