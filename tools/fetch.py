@@ -61,7 +61,6 @@ FILTER_CHARS = 2000
 # Matched on word boundaries, never as substrings: "agi" lives inside "again" and "magic", and one
 # term matching by accident is enough to give half the internet a superintelligence score. A term
 # ending in "*" is a stem, so "hallucinat*" still catches "hallucinating".
-SI_GENERIC = {"ai", "a.i.", "artificial intelligence", "machine learning", "ml"}
 
 PROMO_TERMS = (
     "register", "join us", "get your ticket", "tickets", "hours to", "save your seat", "early bird",
@@ -166,11 +165,35 @@ def promo_path_segment(url: str) -> str:
 
 
 SI_TERMS = (
+    # The ambition, by its own names.
     "superintelligence", "super intelligence", "agi", "artificial general intelligence",
-    "frontier model", "frontier ai", "scaling law", "emergent", "alignment", "safety",
-    "recursive self-improvement", "agentic", "autonomous agent", "reasoning model",
-    "benchmark", "state of the art", "sota", "breakthrough", "training run", "compute cluster",
+    "superalignment", "recursive self-improvement", "frontier model", "frontier ai",
+    # What the models are, in the words the field uses.
+    "artificial intelligence", "machine learning", "deep learning", "neural network",
+    "generative ai", "gen ai", "large language model", "llm", "llms", "multimodal",
+    "foundation model", "open weights", "model weights", "transformer", "diffusion model",
+    # How they are built and run: the words that are only ever these words.
+    "mixture of experts", "pretrain*", "fine-tun*", "rlhf", "reinforcement learning", "distill*",
+    "quantiz*", "synthetic data", "context window", "tokenizer", "scaling law",
+    "training run", "compute cluster",
+    # How they are put to work.
+    "agentic", "agentic ai", "agentic workflow", "ai agent", "autonomous agent", "multi-agent",
+    "tool use", "function calling", "retrieval-augmented", "reasoning model", "chain of thought",
+    # How they fail, which is where the news is.
+    "hallucinat*", "prompt injection", "jailbreak", "benchmark",
+    # The argument around them.
+    "alignment", "safety", "emergent", "state of the art", "sota", "breakthrough",
 )
+
+# Terms that label a card but never add energy. Two kinds sit here: the generic ones, which would give
+# every item on the wire the same boost and so say nothing about which story matters, and the hype ones,
+# which fire on general news as readily as on this subject - "breakthrough", "state of the art" and
+# "sota" appear in a headline about a dishwasher. They stay in SI_TERMS so a card can still show them.
+SI_LABEL_ONLY = {
+    "artificial intelligence", "machine learning", "ai", "a.i.", "ml",
+    "alignment", "safety", "emergent", "state of the art", "sota", "breakthrough",
+    "scaling law", "training run", "compute cluster",
+}
 BREAKING_HOURS = 6.0
 # What turns an item into an upsy moment: a machine doing something absurd, uncanny, or wild enough
 # that people share it as "well, that happened". Rules pick the candidates; the editor writes them up.
@@ -1488,7 +1511,7 @@ def run(args: argparse.Namespace) -> int:
                 published = None
         haystack = f"{item['title']} {item['summary']}".lower()
         score = freshness(published, now) + TIER_WEIGHT.get(item["tier"], 8.0)
-        hits = len(matches([term for term in SI_TERMS if term not in SI_GENERIC], haystack))
+        hits = len(matches([term for term in SI_TERMS if term not in SI_LABEL_ONLY], haystack))
         # Cap the keyword boost and halve it for aggregators: the Google News feed wears
         # "superintelligence" in every headline, which is how it took over the front page.
         boost = min(hits, 3) * 5.0

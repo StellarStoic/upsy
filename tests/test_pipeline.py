@@ -142,8 +142,8 @@ class RankingVocabulary(unittest.TestCase):
         self.assertEqual(fetcher.matches(["hallucinat*"], "the model was hallucinating again"), ["hallucinat*"])
 
     def test_generic_terms_are_not_scored(self):
-        self.assertIn("ai", fetcher.SI_GENERIC)
-        self.assertNotIn("superintelligence", fetcher.SI_GENERIC)
+        self.assertIn("ai", fetcher.SI_LABEL_ONLY)
+        self.assertNotIn("superintelligence", fetcher.SI_LABEL_ONLY)
 
     def test_promos_are_recognised(self):
         self.assertTrue(fetcher.matches(fetcher.PROMO_TERMS, "48 hours to Disrupt 2026 - register now"))
@@ -1576,3 +1576,44 @@ class ScrollMemory(unittest.TestCase):
         source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
         # both page templates interpolate the same script
         self.assertEqual(source.count("{SCROLL_JS}"), 2)
+
+
+class EnergyVocabulary(unittest.TestCase):
+    """What earns energy, and what only labels a card."""
+
+    def test_hype_words_label_but_never_score(self):
+        for term in ("state of the art", "sota", "breakthrough", "alignment", "safety",
+                     "emergent", "scaling law", "training run", "compute cluster"):
+            self.assertIn(term, fetcher.SI_TERMS, term)
+            self.assertIn(term, fetcher.SI_LABEL_ONLY, term)
+
+    def test_the_generic_words_stay_out_of_the_score(self):
+        for term in ("ai", "a.i.", "artificial intelligence", "machine learning", "ml"):
+            self.assertIn(term, fetcher.SI_LABEL_ONLY, term)
+
+    def test_the_technical_vocabulary_is_what_scores(self):
+        scoring = [term for term in fetcher.SI_TERMS if term not in fetcher.SI_LABEL_ONLY]
+        for term in ("superintelligence", "agi", "llm", "llms", "foundation model", "open weights",
+                     "mixture of experts", "fine-tun*", "rlhf", "quantiz*", "context window",
+                     "agentic", "multi-agent", "tool use", "chain of thought", "hallucinat*",
+                     "prompt injection", "jailbreak", "benchmark", "transformer"):
+            self.assertIn(term, scoring, term)
+        self.assertGreaterEqual(len(scoring), 40)
+
+    def test_a_hype_headline_scores_nothing(self):
+        haystack = "a breakthrough in state of the art dishwashers"
+        scoring = [term for term in fetcher.SI_TERMS if term not in fetcher.SI_LABEL_ONLY]
+        self.assertEqual(fetcher.matches(scoring, haystack), [])
+
+    def test_a_technical_headline_scores(self):
+        haystack = "kimi k3.1 pro ships open weights and a 1m context window"
+        scoring = [term for term in fetcher.SI_TERMS if term not in fetcher.SI_LABEL_ONLY]
+        self.assertEqual(sorted(fetcher.matches(scoring, haystack)), ["context window", "open weights"])
+
+    def test_stems_catch_the_inflections(self):
+        scoring = [term for term in fetcher.SI_TERMS if term not in fetcher.SI_LABEL_ONLY]
+        for haystack, term in (("the model is hallucinating", "hallucinat*"),
+                               ("pretraining at scale", "pretrain*"),
+                               ("fine-tuning a small model", "fine-tun*"),
+                               ("quantized to four bits", "quantiz*")):
+            self.assertIn(term, fetcher.matches(scoring, haystack), haystack)
