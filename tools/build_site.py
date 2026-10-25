@@ -332,7 +332,10 @@ def attach_shots(items: list[dict], limit: int, site: pathlib.Path, shots: pathl
     (site / "img").mkdir(exist_ok=True)
     attached = 0
     for item in items[:limit]:
-        if item.get("imageLocal") or (item.get("image") or "").startswith("http"):
+        # The question is whether there is a picture to *show*, not whether one was advertised. A story
+        # whose only image was the publisher's favicon has a url and no picture, and skipping it here is
+        # how a card stayed blank while a screenshot of its own page sat unused on disk.
+        if item.get("imageLocal"):
             continue
         url = item.get("url") or ""
         if not url.startswith("http"):

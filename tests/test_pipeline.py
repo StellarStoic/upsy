@@ -1653,3 +1653,22 @@ class PicturesSayWhy(unittest.TestCase):
         self.assertEqual([i["url"] for i in picked], ["https://example.com/a"])
         # and without the list, a story that claims a picture is skipped
         self.assertEqual(screenshots.select([item, kept], {}, {}, 160, 60, today, False, set()), [])
+
+    def test_a_screenshot_is_attached_even_when_the_feed_advertised_a_favicon(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            site = pathlib.Path(tmp) / "site"
+            shots = pathlib.Path(tmp) / "shots"
+            (site / "img").mkdir(parents=True)
+            shots.mkdir()
+            url = "https://example.com/story"
+            stem = hashlib.sha1(url.encode("utf-8")).hexdigest()[:20]
+            # a real 1x1 PNG, the smallest thing the magic-byte check will accept
+            png = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+                                "890000000a49444154789c6360000002000001e221bc330000000049454e44ae426082")
+            (shots / (stem + ".png")).write_bytes(png)
+            item = {"id": "x", "url": url, "image": "https://example.com/favicon.ico",
+                    "imageLocal": ""}
+            attached = build_site.attach_shots([item], 10, site, shots)
+            self.assertEqual(attached, 1)
+            self.assertTrue(item["imageLocal"].startswith("/img/"))
