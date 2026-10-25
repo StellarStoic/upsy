@@ -1017,6 +1017,103 @@ def text_to_html(text: str) -> str:
     return body
 
 
+LISTEN_HEADER = """<header class="top">
+  <a class="brand" href="/">up<b>sy</b></a>
+  <div class="status">
+    <span><i class="dot"></i>{shows} shows</span>
+    <span><b>{episodes}</b> episodes</span>
+    <span>updated {updated}</span>
+    <span><a href="/">the wire</a></span>
+  </div>
+  <button id="net-toggle" class="net-toggle" type="button" aria-expanded="false"
+          aria-controls="net-drawer" aria-label="the shows we watch" title="the shows we watch">
+    <!-- network, from lucide (ISC licence): https://lucide.dev/icons/network -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/>
+      <rect x="9" y="2" width="6" height="6" rx="1"/>
+      <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>
+    </svg>
+    <span class="net-count" id="net-count" hidden></span>
+  </button>
+</header>"""
+
+LISTEN_DRAWER = """<div class="net-backdrop" id="net-backdrop"></div>
+<aside class="net-drawer" id="net-drawer" aria-label="the shows we watch">
+  <div class="net-head">
+    <h3>shows we watch</h3>
+    <button id="net-clear" type="button" hidden>clear</button>
+    <button id="net-close" class="net-x" type="button" aria-label="close the show list">&#215;</button>
+  </div>
+  <p class="net-hint">Every podcast on the wire, the busiest first; the number is how many episodes
+  each one has here. Tap one to listen to that show alone, tap it again to let the rest back in.</p>
+  <div class="net" id="net">{net_rows}</div>
+  <p class="net-all"><a href="/sources.html">every source &amp; the method</a></p>
+</aside>"""
+
+LISTEN_JS = """<script>
+(function () {
+  // The same drawer the front page folds behind this icon, pointed at the show list instead of the
+  // stream: the button was in the header of this page with nothing behind it, so it did nothing at
+  // all. Fold, filter, and say how many shows are selected.
+  const toggle = document.getElementById('net-toggle');
+  const drawer = document.getElementById('net-drawer');
+  const backdrop = document.getElementById('net-backdrop');
+  const count = document.getElementById('net-count');
+  const clear = document.getElementById('net-clear');
+  const close = document.getElementById('net-close');
+  if (!toggle || !drawer) return;
+  const selected = new Set();
+  function open(flag) {
+    drawer.classList.toggle('is-open', flag);
+    backdrop.classList.toggle('is-open', flag);
+    document.body.classList.toggle('net-open', flag);
+    toggle.setAttribute('aria-expanded', flag ? 'true' : 'false');
+    if (flag) {
+      const first = drawer.querySelector('.net-item');
+      if (first) first.focus({ preventScroll: true });
+    } else if (document.activeElement && drawer.contains(document.activeElement)) {
+      toggle.focus({ preventScroll: true });
+    }
+  }
+  function apply() {
+    for (const item of document.querySelectorAll('.listen-item')) {
+      item.hidden = selected.size > 0 && !selected.has(item.dataset.src);
+    }
+    count.hidden = selected.size === 0;
+    count.textContent = String(selected.size);
+    clear.hidden = selected.size === 0;
+    toggle.classList.toggle('is-filtered', selected.size > 0);
+    toggle.setAttribute('aria-label', selected.size
+      ? 'the shows we watch, ' + selected.size + ' selected' : 'the shows we watch');
+  }
+  toggle.addEventListener('click', function () { open(!drawer.classList.contains('is-open')); });
+  close.addEventListener('click', function () { open(false); });
+  backdrop.addEventListener('click', function () { open(false); });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && drawer.classList.contains('is-open')) open(false);
+  });
+  clear.addEventListener('click', function () {
+    selected.clear();
+    for (const button of document.querySelectorAll('#net .net-item')) {
+      button.classList.remove('is-on');
+      button.setAttribute('aria-pressed', 'false');
+    }
+    apply();
+  });
+  for (const button of document.querySelectorAll('#net .net-item')) {
+    button.addEventListener('click', function () {
+      const key = button.dataset.src;
+      const wasOn = selected.has(key);
+      if (wasOn) selected.delete(key); else selected.add(key);
+      button.classList.toggle('is-on', !wasOn);
+      button.setAttribute('aria-pressed', wasOn ? 'false' : 'true');
+      apply();
+    });
+  }
+})();
+</script>"""
+
 def duration_label(seconds: int) -> str:
     """"1 h 04 min", "48 min" - a length a reader can judge, not a number of seconds."""
     try:
@@ -1158,7 +1255,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
         length = duration_label(episode.get("duration"))
         badges = ['<span class="badge">transcript</span>'] if episode.get("transcript") else []
         when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
-        rows.append(f'<article class="listen-item">\n'
+        rows.append(f'<article class="listen-item" data-src="{src_key(episode["sourceName"])}">\n'
                     f'      <div class="kicker"><span>{esc(episode["sourceName"])}</span>'
                     f'<span>{esc(when)}</span>' + (f'<span>{esc(length)}</span>' if length else "")
                     + "".join(badges) + '</div>\n'
@@ -1176,10 +1273,22 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
         og_title="Listening | upsy.si",
         og_description=f"{len(episodes)} episodes from {len({e['sourceName'] for e in episodes})} shows.",
         og_image="", twitter_card="summary", extra_meta="", css=CSS)
-    header = HEADER.format(sources=len({e["sourceName"] for e in episodes}), breaking=0,
-                           upsy=len(episodes), updated=age(data_timestamp(), now))
+    header = LISTEN_HEADER.format(shows=len({e["sourceName"] for e in episodes}),
+                                  episodes=len(episodes), updated=age(data_timestamp(), now))
     body = "\n    ".join(rows) or "<p>No episodes on the wire yet.</p>"
-    return (f"""{head}<h1 class="vh">upsy.si \u2014 listening</h1>{header}
+    # The drawer lists the shows, busiest first, with what each one contributed - the same idea as the
+    # source network on the wire, because a reader who wants one show wants it here too.
+    per_show = {}
+    for episode in episodes:
+        per_show.setdefault(episode["sourceName"], 0)
+        per_show[episode["sourceName"]] += 1
+    net_rows = "\n".join(
+        f'<button type="button" class="net-item" data-src="{src_key(name)}" aria-pressed="false"'
+        f' title="{number} episode(s) on the wire">'
+        f'<span class="nm">{esc(name)}</span><span class="num">{number}</span></button>'
+        for name, number in sorted(per_show.items(), key=lambda pair: (-pair[1], pair[0].lower())))
+    drawer = LISTEN_DRAWER.format(net_rows=net_rows)
+    return (f"""{head}<h1 class="vh">upsy.si \u2014 listening</h1>{header}{drawer}
 <main>
   <div class="listen-list">
     <h1>listening</h1>
@@ -1189,6 +1298,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
   </div>
 </main>
 {footer(len(episodes), len({e['sourceName'] for e in episodes}))}
+{LISTEN_JS}
 </body></html>
 """)
 

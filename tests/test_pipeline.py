@@ -1030,3 +1030,44 @@ class NoStrayBytes(unittest.TestCase):
         self.assertNotIn("\x00", page)
         self.assertNotIn("\ufffd", page)
         self.assertIn("\u00b7", build_site.CSS)
+
+
+class ListeningShows(PodcastSite):
+    """The header's drawer on the listening page has to open and hold every show we watch."""
+
+    def test_the_page_carries_a_drawer_and_a_button_that_controls_it(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        self.assertIn('id="net-toggle"', page)
+        self.assertIn('aria-controls="net-drawer"', page)
+        self.assertIn('id="net-drawer"', page)
+        self.assertIn('id="net-backdrop"', page)
+        self.assertIn('aria-label="the shows we watch"', page)
+
+    def test_the_drawer_lists_the_show_with_what_it_contributed(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        drawer = page.split('id="net-drawer"')[1]
+        self.assertIn("A Show", drawer)
+        self.assertIn('<span class="num">1</span>', drawer)
+
+    def test_every_episode_row_names_a_show_the_drawer_can_filter_by(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        rows = re.findall(r'<article class="listen-item" data-src="([^"]+)"', page)
+        net = re.findall(r'<button type="button" class="net-item" data-src="([^"]+)"', page)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows), set(net))
+
+    def test_the_script_that_opens_it_is_on_the_page(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        self.assertIn("getElementById('net-drawer')", page)
+        self.assertIn("classList.toggle('is-open'", page)
+        self.assertIn(".listen-item", page)
+
+    def test_the_header_counts_shows_and_episodes_not_breaking_news(self):
+        page = (self.site / "listen.html").read_text(encoding="utf-8")
+        # the header slice, not everything before </header> - the stylesheet names a .tag.breaking
+        header = page.split('<header class="top">')[1].split("</header>")[0]
+        self.assertIn("1 shows", header)
+        self.assertIn("<b>1</b> episodes", header)
+        self.assertIn("the wire", header)
+        self.assertNotIn("breaking", header)
+        self.assertNotIn("anomalies", header)
