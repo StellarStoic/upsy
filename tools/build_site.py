@@ -443,9 +443,10 @@ CSS = """
   /* The wire had no h1 at all: a page with no h1 has no title a screen reader or a crawler
      can name it by. This keeps the drawn page exactly as designed. */
   /* the listening lane and the player: same palette, nothing new to learn */
-  .listen-row { display:grid; grid-template-columns:56px 1fr; gap:2px 10px; padding:10px 0;
+  .listen-row { display:grid; grid-template-columns:1fr 56px; gap:2px 10px; padding:10px 0;
                 border-bottom:1px solid var(--line); text-decoration:none; align-items:start; }
-  .listen-row .thumb { width:56px; height:56px; grid-row:span 2; border-radius:3px; object-fit:cover; }
+  .listen-row .thumb { width:56px; height:56px; grid-column:2; grid-row:1 / span 2; border-radius:3px;
+                       object-fit:cover; }
   .listen-row .thumb.tile span { font-size:15px; }
   .listen-row:last-of-type { border-bottom:0; }
   .listen-row .play { grid-row:span 2; color:var(--upsy); font-size:12px; line-height:1.5; }
@@ -474,9 +475,10 @@ CSS = """
   .listen-list h1 { font-size:22px; margin:0 0 6px; }
   .listen-item { border-top:1px solid var(--line); padding:16px 0;
                  display:flex; gap:14px; align-items:flex-start; }
-  .listen-item .thumb { width:88px; height:88px; flex:0 0 88px; border-radius:3px; object-fit:cover; }
+  .listen-item .thumb { width:88px; height:88px; flex:0 0 88px; border-radius:3px; object-fit:cover;
+                        order:2; }
   .listen-item .thumb.tile span { font-size:22px; }
-  .listen-item .li-body { min-width:0; flex:1; }
+  .listen-item .li-body { min-width:0; flex:1; order:1; }
   .listen-item h2 { font-size:16px; margin:6px 0; line-height:1.3; }
   .listen-item h2 a { color:var(--fg); text-decoration:none; }
   .listen-item h2 a:hover { color:var(--link); }
@@ -693,6 +695,10 @@ CSS = """
     .rows { border-right:0; }
     .row { grid-template-columns:56px minmax(0,1fr); padding:11px 14px; }
     .row .thumb { display:none; }
+    .listen-item .thumb { width:64px; height:64px; flex:0 0 64px; }
+    .listen-item .thumb.tile span, .listen-row .thumb.tile span { font-size:16px; }
+    .listen-row .thumb { width:44px; height:44px; }
+    .listen-row { grid-template-columns:1fr 44px; }
     header.top, .bar { padding-left:14px; padding-right:14px; }
     .status { width:100%; margin-left:0; }
     /* The status line takes a row of its own on a phone, which drops the icon onto the next

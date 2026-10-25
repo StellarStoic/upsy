@@ -1755,3 +1755,14 @@ class NoEmptyCards(unittest.TestCase):
         item.update({"kind": "news", "audio": "", "duration": 0, "imageLocal": "", "image": ""})
         page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
         self.assertNotIn('class="lead', page)
+
+    def test_the_podcast_cover_sits_on_the_right(self):
+        page = self.listen_page()
+        self.assertIn(".listen-item .thumb {", page)
+        self.assertIn("order:2", page)
+        self.assertIn(".listen-item .li-body { min-width:0; flex:1; order:1; }", page)
+
+    def test_the_lane_cover_sits_on_the_right_too(self):
+        source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
+        self.assertIn("grid-template-columns:1fr 56px", source)
+        self.assertIn("grid-column:2; grid-row:1 / span 2", source)
