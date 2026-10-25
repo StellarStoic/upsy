@@ -340,6 +340,9 @@ CSS = """
   .listen-row:hover .lt { color:var(--link); }
   .listen-row .lm { color:var(--dim); font-size:11px; }
   audio.player { width:100%; margin:14px 0 4px; filter:saturate(.75); }
+  button.chapter { font:inherit; font-size:inherit; color:var(--cool); background:none; border:0;
+    border-bottom:1px dotted currentColor; padding:0 1px; cursor:pointer; }
+  button.chapter:hover, button.chapter:focus-visible { color:var(--upsy); border-bottom-color:var(--upsy); }
   .listen-list { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
   .listen-list h1 { font-size:22px; margin:0 0 6px; }
   .listen-item { border-top:1px solid var(--line); padding:16px 0; }
@@ -1114,6 +1117,67 @@ LISTEN_JS = """<script>
 })();
 </script>"""
 
+TIMESTAMP = re.compile(r"(?is)^(\s*)(\(?\s*\d{1,3}:\d{2}(?::\d{2})?\s*\)?)")
+BLOCK_START = re.compile(
+    r"(?is)(<(?:p|li|div)(?:\s[^>]*)?>)(\s*)((?:<(?:span|strong|em|b|i)>)?)(\s*)"
+    r"(\(?\s*\d{1,3}:\d{2}(?::\d{2})?\s*\)?)")
+
+
+def timestamp_seconds(label: str) -> int:
+    """"(09:54)", "9:54" and "1:02:03" as a number of seconds; -1 when it is not a timestamp."""
+    parts = re.findall(r"\d+", label or "")
+    if not 2 <= len(parts) <= 3:
+        return -1
+    numbers = [int(part) for part in parts]
+    if len(numbers) == 3:
+        hours, minutes, seconds = numbers
+        if minutes > 59 or seconds > 59:
+            return -1
+        return hours * 3600 + minutes * 60 + seconds
+    minutes, seconds = numbers
+    if seconds > 59:
+        return -1
+    return minutes * 60 + seconds
+
+
+def chapterise(html: str) -> str:
+    """A timestamp at the start of a description block becomes a button that seeks the player.
+
+    Shows publish their chapters as text ("(09:54) Weekly episode preview"), which is navigation a
+    reader can read and cannot use. Only a block's *first* timestamp is converted: a time in the middle
+    of a sentence is part of the sentence.
+    """
+    def mark(match: re.Match) -> str:
+        opening, space, inner, space2, label = match.groups()
+        seconds = timestamp_seconds(label)
+        if seconds < 0:
+            return match.group(0)
+        # whatever wrapped the timestamp stays where it was; only the text becomes a button
+        return (f'{opening}{space}{inner}{space2}<button type="button" class="chapter" '
+                f'data-at="{seconds}">{label.strip()}</button>&nbsp;')
+    return BLOCK_START.sub(mark, html)
+
+
+EPISODE_JS = """<script>
+(function () {
+  // Chapters are the show's own index; a timestamp that cannot be pressed is a note to self. Pressing
+  // one seeks the player and starts it, and brings the player into view so the reader can see it move.
+  const player = document.querySelector('audio.player');
+  if (!player) return;
+  for (const mark of document.querySelectorAll('button.chapter[data-at]')) {
+    mark.addEventListener('click', function () {
+      const at = Number(mark.dataset.at);
+      if (!isFinite(at) || at < 0) return;
+      if (isFinite(player.duration) && player.duration > 0 && at > player.duration) return;
+      try { player.currentTime = at; } catch (error) { return; }
+      const started = player.play();
+      if (started && started.catch) started.catch(function () {});
+      player.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }
+})();
+</script>"""
+
 def duration_label(seconds: int) -> str:
     """"1 h 04 min", "48 min" - a length a reader can judge, not a number of seconds."""
     try:
@@ -1181,7 +1245,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         # An episode keeps the description's own markup: the sponsors are already gone from it, and
         # its links stay clickable with the words the show gave them ("LinkedIn", "Go Exploit
         # framework") instead of a bare URL in a paragraph.
-        body = item["contentHtml"]
+        body = chapterise(item["contentHtml"])
         note = ""
     elif item.get("content"):
         body = text_to_html(item["content"])
@@ -1221,6 +1285,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     # "energy" is how a story was ranked; an episode is not ranked that way, so its kicker says how
     # long it runs instead.
     third = duration_label(item.get("duration")) if is_episode else f"energy {item['score']:.0f}"
+    episode_js = EPISODE_JS if is_episode and item.get("audio") else ""
     return f"""{head}{top}<main class="single">
   <div class="{story_class}">
     <div class="kicker">{''.join(tags)}<span>{age(item.get('published'), now)} ago</span><span>{third}</span></div>
@@ -1236,6 +1301,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     </div>
   </div>
 </main>
+{episode_js}
 {footer()}
 <script type="application/ld+json">{ld}</script>
 </body></html>

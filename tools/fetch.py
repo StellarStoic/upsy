@@ -669,6 +669,24 @@ def episode_fields(source: dict, raw: dict) -> dict:
     return fields
 
 
+def channel_image(root: ET.Element) -> str:
+    """The show's own artwork: <itunes:image href>, or RSS <image><url>.
+
+    Only one episode in twenty carries per-episode art, so without this an episode page has no picture
+    at all and the show is visually anonymous next to a news card.
+    """
+    for child in root.iter():
+        tag = local(child.tag)
+        if tag == "image":
+            href = (child.get("href") or "").strip()
+            if href.startswith("http"):
+                return href
+            for inner in child.iter():
+                if local(inner.tag) == "url" and (inner.text or "").strip().startswith("http"):
+                    return inner.text.strip()
+    return ""
+
+
 def parse_feed(body: bytes, base: str = "") -> list[dict]:
     text = body.decode("utf-8", "replace").lstrip("\ufeff \r\n\t")
     try:
@@ -681,6 +699,7 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
             raise
         root = ET.fromstring(text[:cut + len("</item>")] + "</channel></rss>"
                              if text[cut:cut + 7] == "</item>" else text[:cut + len("</entry>")] + "</feed>")
+    show_picture = channel_image(root)
     nodes: list[ET.Element] = []
     for candidate in root.iter():
         if local(candidate.tag) in ("item", "entry"):
@@ -724,7 +743,8 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
             "summaryHtml": raw_summary[:12000],
             "content": strip_html(full_text) if full_text else "",
             "has_full_text": bool(full_text),
-            "image": image_from_node(node),
+            "image": image_from_node(node) or (show_picture if show_picture else ""),
+            "showImage": show_picture,
             **podcast_extras(node),
         })
     return items
@@ -906,7 +926,8 @@ def run(args: argparse.Namespace) -> int:
             # before that markup was kept cannot produce it - a 304 would carry the old items
             # forward forever, so ask for the whole feed instead.
             previous = item_cache.get(source["url"], [])
-            if previous and not all("summaryHtml" in entry for entry in previous):
+            needed = ("summaryHtml", "showImage")     # what an episode's page is built from
+            if previous and not all(all(key in entry for key in needed) for entry in previous):
                 etag = modified = None
         try:
             status, body, headers = fetch_with_retries(source["url"], etag=etag, modified=modified)

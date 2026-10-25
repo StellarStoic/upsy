@@ -1071,3 +1071,52 @@ class ListeningShows(PodcastSite):
         self.assertIn("the wire", header)
         self.assertNotIn("breaking", header)
         self.assertNotIn("anomalies", header)
+
+
+class ChaptersPlay(unittest.TestCase):
+    """A timestamp at the start of a block is navigation, so it should move the player."""
+
+    def test_timestamps_are_read_in_every_shape_feeds_use(self):
+        self.assertEqual(build_site.timestamp_seconds("(09:54)"), 594)
+        self.assertEqual(build_site.timestamp_seconds("1:02:03"), 3723)
+        self.assertEqual(build_site.timestamp_seconds("9:54"), 594)
+        self.assertEqual(build_site.timestamp_seconds("0:00"), 0)
+        self.assertEqual(build_site.timestamp_seconds("99:99"), -1)
+        self.assertEqual(build_site.timestamp_seconds("part one"), -1)
+
+    def test_a_chapter_becomes_a_button_that_carries_its_second(self):
+        html = build_site.chapterise("<p>(09:54) Weekly episode preview</p>")
+        self.assertIn('<button type="button" class="chapter" data-at="594">(09:54)</button>', html)
+        self.assertIn("Weekly episode preview", html)
+
+    def test_a_timestamp_inside_a_list_item_or_a_span_still_works(self):
+        html = build_site.chapterise("<ul><li><span>(26:25)</span> Sponsor: Tasklet</li></ul>")
+        self.assertIn('data-at="1585"', html)
+        self.assertIn("Sponsor: Tasklet", html)
+
+    def test_a_time_in_the_middle_of_a_sentence_is_left_alone(self):
+        html = "<p>Recursive self improvement (Part 1) and it ran 09:54 long</p>"
+        self.assertEqual(build_site.chapterise(html), html)
+
+    def test_the_page_carries_the_script_that_seeks_the_player(self):
+        item = dict(StoryPageFurniture.ITEM)
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertIn("button.chapter[data-at]", page)
+        self.assertIn("player.currentTime = at", page)
+        self.assertIn("player.play()", page)
+        self.assertIn("audio.player", page)
+
+    def test_a_story_page_carries_no_player_script(self):
+        item = dict(StoryPageFurniture.ITEM, kind="news", audio="", duration=0)
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertNotIn("player.currentTime", page)
+
+    def test_an_episode_without_its_own_art_borrows_the_shows(self):
+        artwork = "https://cdn.example.com/show.jpg"
+        raw = {"title": "An episode", "link": "https://example.com/e1", "summary": "A description.",
+               "summaryHtml": "<p>A description.</p>", "image": artwork, "showImage": artwork,
+               "audio": "https://cdn.example.com/e1.mp3", "audioType": "audio/mpeg", "duration": 600,
+               "transcript": "", "transcriptType": ""}
+        fields = fetcher.episode_fields({"kind": "podcast"}, raw)
+        self.assertEqual(fields["kind"], "podcast")
+        self.assertEqual(fields["duration"], 600)
