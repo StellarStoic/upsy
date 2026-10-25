@@ -1433,3 +1433,9 @@ class CacheDoesNotOutliveItsVerdict(unittest.TestCase):
         source = pathlib.Path("tools/fetch.py").read_text(encoding="utf-8")
         self.assertIn('existing.get("extrasChecked")', source)
         self.assertIn('found["extrasChecked"]', source)
+
+    def test_a_revived_item_is_cleaned_like_a_fresh_one(self):
+        revived = fetcher._revive([{"title": "MOFCOM&amp;#x27;s New Rules", "summary": "A &amp; B",
+                                    "published": "2026-10-25T10:00:00+00:00"}])
+        self.assertEqual(revived[0]["title"], "MOFCOM's New Rules")
+        self.assertEqual(revived[0]["summary"], "A & B")

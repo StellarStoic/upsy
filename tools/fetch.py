@@ -328,10 +328,19 @@ def parse_date(node: ET.Element) -> datetime | None:
 
 
 def _revive(entries: list[dict]) -> list[dict]:
-    """The cached form of a parsed item, back to the shape the collector expects."""
+    """The cached form of a parsed item, back to the shape the collector expects.
+
+    Cached items were parsed by an older version of this file, so they are put through the same cleaning
+    a fresh parse gets rather than trusted as they were stored. That is how a title escaped by a feed
+    before the unescaping existed would otherwise keep its &#x27; forever: a source answering "not
+    modified" never re-parses, it revives.
+    """
     revived = [dict(entry) for entry in entries]
     for entry in revived:
         entry["published_dt"] = _parse(entry.get("published"))
+        for field in ("title", "summary", "content", "author", "summaryHtml"):
+            if isinstance(entry.get(field), str):
+                entry[field] = deep_unescape(entry[field])
     return revived
 
 
