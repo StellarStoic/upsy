@@ -919,12 +919,28 @@ class StoryPageFurniture(unittest.TestCase):
         item = {**self.ITEM, **overrides}
         return build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
 
+    def test_an_episode_goes_back_to_the_listening_feed(self):
+        page = self.page()
+        self.assertIn('<a class="back" href="/listen.html">&larr; listening</a>', page)
+        self.assertIn('<a class="crumb" href="/">the wire</a>', page)
+        self.assertNotIn('<a class="back" href="/">', page)
+
+    def test_a_story_still_goes_back_to_the_wire(self):
+        page = self.page(kind="news", audio="", duration=0)
+        self.assertIn('<a class="back" href="/">&larr; upsy.si</a>', page)
+        self.assertIn('<a class="crumb" href="/sources.html">sources</a>', page)
+
     def test_the_way_back_is_at_the_top_of_the_page(self):
         for page in (self.page(), self.page(kind="news", audio="", duration=0)):
             self.assertIn('<nav class="story-top">', page)
-            self.assertIn('<a class="back" href="/">&larr; upsy.si</a>', page)
-            # and it is above the article, not buried under it
+            # above the article, not buried under it
             self.assertLess(page.index('class="story-top"'), page.index('<h1>'))
+
+    def test_the_foot_of_the_page_agrees_with_the_top(self):
+        episode = self.page()
+        self.assertIn('<a href="/listen.html">&larr; back to listening</a>', episode)
+        story = self.page(kind="news", audio="", duration=0)
+        self.assertIn('<a href="/">&larr; back to upsy.si</a>', story)
 
     def test_a_story_page_is_one_column_not_the_front_pages_grid(self):
         self.assertIn('<main class="single">', self.page())

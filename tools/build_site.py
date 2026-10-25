@@ -1329,10 +1329,16 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     }, ensure_ascii=False)
     # The way back was only at the bottom of the page, under "more from the stream" - which is no use
     # to somebody who arrived from a link and started listening.
-    crumb = ('<a class="crumb" href="/listen.html">listening</a>' if is_episode
-             else '<a class="crumb" href="/sources.html">sources</a>')
+    # An episode belongs to the listening feed, so that is where its way back goes - the wire is the
+    # crumb beside it. A story still returns to the wire, with the source list as its crumb.
+    if is_episode:
+        back = '<a class="back" href="/listen.html">&larr; listening</a>'
+        crumb = '<a class="crumb" href="/">the wire</a>'
+    else:
+        back = '<a class="back" href="/">&larr; upsy.si</a>'
+        crumb = '<a class="crumb" href="/sources.html">sources</a>'
     story_class = "story episode" if is_episode else "story"
-    top = f'<nav class="story-top"><a class="back" href="/">&larr; upsy.si</a>{crumb}</nav>\n'
+    top = f'<nav class="story-top">{back}{crumb}</nav>\n'
     # "energy" is how a story was ranked; an episode is not ranked that way, so its kicker says how
     # long it runs instead.
     third = duration_label(item.get("duration")) if is_episode else f"energy {item['score']:.0f}"
@@ -1348,7 +1354,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     {note}
     <div class="related"><h3>{'more listening' if is_episode else 'more from the stream'}</h3>
       {related_html}
-      <a href="/">&larr; back to upsy.si</a>
+      <a href="{'/listen.html' if is_episode else '/'}">&larr; back to {'listening' if is_episode else 'upsy.si'}</a>
     </div>
   </div>
 </main>
