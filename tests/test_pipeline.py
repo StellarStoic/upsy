@@ -1439,3 +1439,35 @@ class CacheDoesNotOutliveItsVerdict(unittest.TestCase):
                                     "published": "2026-10-25T10:00:00+00:00"}])
         self.assertEqual(revived[0]["title"], "MOFCOM's New Rules")
         self.assertEqual(revived[0]["summary"], "A & B")
+
+
+class WalledArticlesAreDropped(unittest.TestCase):
+    """A paywall can be markup, not just copy: the body in a hidden container settles it."""
+
+    HIDDEN = ('<div class="paywall-preview"><p>First paragraph of the teaser.</p></div>'
+              '<div class="paywall-hidden-content"><p>' + "Hidden body word " * 300 + '</p></div>'
+              '<section class="paywall-content">Subscribe to The Decoder</section>'
+              '<script>{"isAccessibleForFree": "False", "hasPart": {"@type": "WebPageElement", '
+              '"isAccessibleForFree": "False", "cssSelector": ".paywall-active"}}</script>')
+
+    def test_the_decoder_shape_is_a_wall(self):
+        reasons = fetcher.paywall_reasons(self.HIDDEN)
+        self.assertIn("the body is in a hidden container", reasons)
+        self.assertIn("the article is marked paywall-active", reasons)
+        self.assertIn("schema splits the article into a free part and a walled part", reasons)
+
+    def test_hidden_words_do_not_count_as_readable(self):
+        # the page holds 300 words; the reader sees one paragraph
+        self.assertLess(fetcher.visible_words(self.HIDDEN), 60)
+        self.assertGreater(fetcher.page_words(self.HIDDEN), 250)
+
+    def test_a_free_article_from_the_same_site_is_kept(self):
+        page = ('<div class="content-wrapper"><p>' + "A publishable paragraph. " * 60 + "</p></div>"
+                '<meta property="article:content_tier" content="free">')
+        self.assertEqual(fetcher.paywall_reasons(page), [])
+
+    def test_the_decoder_is_disabled_in_the_catalogue(self):
+        sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        decoder = next(s for s in sources if s["id"] == "the-decoder")
+        self.assertFalse(decoder.get("enabled", True))
+        self.assertIn("paywall-hidden-content", decoder["note"])

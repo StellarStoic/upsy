@@ -1295,7 +1295,9 @@
       "url": "https://the-decoder.com/feed/",
       "category": "press",
       "tier": 2,
-      "homepage": "https://the-decoder.com/"
+      "homepage": "https://the-decoder.com/",
+      "enabled": false,
+      "note": "DISABLED at D's request, 2026-10-25. Its subscriber-only pieces ship the body inside .paywall-hidden-content behind a 'Subscribe to The Decoder' overlay: measured over its own ten newest items, 3 were walled (141-197 visible words) and 7 were free (236-817). A publisher that sells a third of its articles is advertising a subscription as much as it is publishing, so the source is out rather than filtered item by item. Re-enable by deleting this line if that judgement changes."
     },
     {
       "id": "unite-ai",

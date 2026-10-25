@@ -815,6 +815,21 @@ ARTICLE_CACHE: dict[str, dict] = {}
 # reading" means the rest of the piece does not exist for us. The schema.org flag is the strongest of
 # them - a publisher that sets isAccessibleForFree to false is telling machines, on purpose, that the
 # text is behind a wall - and paywall-vendor scripts are the machinery of the same thing.
+# A page can hide the article instead of describing it: The Decoder ships a teaser in `.paywall-preview`,
+# the body in `.paywall-hidden-content`, and a "Subscribe to The Decoder" section over the top. Counting
+# paragraphs then lies, because the hidden ones are still paragraphs. These are the containers that say
+# "this part is not for you", and they settle the question on their own.
+PAYWALL_CONTAINERS = (
+    ("the body is in a hidden container", re.compile(
+        r"""(?i)class=["'][^"']*\bpaywall-(?:hidden|content|active|locked|restricted)\b""")),
+    ("the article is marked paywall-active", re.compile(
+        r"""(?i)\.paywall-active\b|["']paywallActive["']\s*:\s*true""")),
+    ("schema splits the article into a free part and a walled part", re.compile(
+        r"""(?i)"hasPart"\s*:\s*\{[^}]*"isAccessibleForFree"\s*:\s*"?false""")),
+    ("the page carries paid-content markup", re.compile(
+        r"""(?i)class=["'][^"']*\b(?:subscriber-only|premium-content|paid-content)\b""")),
+)
+
 PAYWALL_MARKERS = (
     ("says it is not free to read", re.compile(r'"isAccessibleForFree"\s*:\s*"?false', re.I)),
     ("is marked locked or metered", re.compile(r'article:content_tier"\s+content="(?:locked|metered|premium)"', re.I)),
@@ -986,6 +1001,13 @@ def episode_extras(url: str, cache: dict, budget: list[int]) -> dict:
     return found
 
 
+def visible_words(page: str) -> int:
+    """Paragraph words a reader can actually see, with paywalled containers removed first."""
+    body = re.sub(r"""(?is)<div[^>]+class=["'][^"']*\bpaywall-hidden-content\b[^"']*["'][^>]*>.*?</div>""",
+                  " ", page)
+    return page_words(body)
+
+
 def paywall_reasons(page: str) -> list[str]:
     """Which signals a page carries that say the article is behind a wall.
 
@@ -999,9 +1021,15 @@ def paywall_reasons(page: str) -> list[str]:
         return []
     text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", page, flags=re.S)
     plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text))
+    # A hidden body is the whole answer: the publisher has already told us, in markup, which paragraphs
+    # are for subscribers. No length test can overrule that, and counting every paragraph on the page
+    # said "readable" about an article whose body the reader never sees.
+    structural = [name for name, pattern in PAYWALL_CONTAINERS if pattern.search(page)]
     found = [name for name, pattern in PAYWALL_MARKERS
              if pattern.search(page) or pattern.search(plain)]
-    if found and page_words(page) >= PAYWALL_READABLE_WORDS:
+    if structural:
+        return structural + [name for name in found if name not in structural]
+    if found and visible_words(page) >= PAYWALL_READABLE_WORDS:
         return []           # the article is here, so there is no wall to respect
     return found
 
