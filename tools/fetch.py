@@ -375,6 +375,22 @@ SELF_DESCRIPTION = (
 )
 
 
+def deep_unescape(text: str) -> str:
+    """Undo HTML escaping until it stops changing.
+
+    Feeds escape their own escaping: a show that writes "Intel&#8217;s" into a CMS that escapes ampersands
+    hands us "Intel&amp;#8217;s", and one html.unescape turns that into a visible "&#8217;" in the middle
+    of a headline. Two rounds settle almost every feed; the loop stops early when there is nothing left.
+    """
+    if not text:
+        return ""
+    previous = None
+    while text != previous and text.count("&") and text.count("&") < 200:
+        previous = text
+        text = html.unescape(text)
+    return text
+
+
 def clean_summary(summary: str) -> str:
     """Strip feed furniture, and return "" when what is left was never a summary at all."""
     text = summary or ""
@@ -686,13 +702,13 @@ def episode_fields(source: dict, raw: dict) -> dict:
     # An episode's description *is* its page text: there is no article to read behind it, and the
     # 600-character rule that keeps a news teaser out of the body would leave an episode page with one
     # line and a "summary only" notice that points at nowhere.
-    description = (raw.get("summary") or "").strip()
+    description = deep_unescape(raw.get("summary") or "").strip()
     if description:
         fields["content"] = description[:4000]
         fields["contentFrom"] = "feed"
     raw_html = raw.get("summaryHtml") or ""
     if raw_html:
-        cleaned = clean_episode_html(raw_html)
+        cleaned = clean_episode_html(deep_unescape(raw_html))
         if cleaned:
             fields["contentHtml"] = cleaned[:8000]
             plain = re.sub(r"\s+", " ", strip_html(cleaned)).strip()
@@ -767,10 +783,10 @@ def parse_feed(body: bytes, base: str = "") -> list[dict]:
         raw_summary = first_text(node, ("encoded", "summary", "description", "content"))
         full_text = first_text(node, ("encoded",))
         items.append({
-            "title": title,
+            "title": deep_unescape(title),
             "link": link if link == audio else resolve_link(node, link, base),
             "published": parse_date(node),
-            "author": strip_html(first_text(node, ("author", "creator", "name"))),
+            "author": deep_unescape(strip_html(first_text(node, ("author", "creator", "name")))),
             "summary": strip_html(raw_summary)[:1200],
             "summaryHtml": raw_summary[:12000],
             "content": strip_html(full_text) if full_text else "",
@@ -830,6 +846,125 @@ def page_words(page: str) -> int:
     paragraphs = re.findall(r"(?is)<p[^>]*>(.*?)</p>", body)
     text = " ".join(re.sub(r"<[^>]+>", " ", paragraph) for paragraph in paragraphs)
     return len(text.split())
+
+
+EPISODE_TRANSCRIPT_LIMIT = 60000    # characters of transcript we will carry
+MAX_EPISODE_PAGES_PER_RUN = 10      # episode pages read per run, for shows whose feed is terse
+
+STAMP = re.compile(r"\(?(\d{1,2}:\d{2}(?::\d{2})?)\)?\s*[\u2013\u2014\-:|]\s*")
+CHAPTER_START = re.compile(r"(?i)^(?:timestamps?|chapters?|timeline|in this episode)\b")
+CHAPTER_STOP = re.compile(r"(?i)^(?:links?|resources|credits|sponsors?|subscribe|share|follow)\b")
+TRANSCRIPT_START = re.compile(r"(?i)^(?:full )?transcript\b")
+TRANSCRIPT_STOP = re.compile(r"(?i)^(?:share|discussion about this|subscribe|links|credits|timestamps|"
+                             r"get the podcast|listen on|related|previous|next|leave a comment|"
+                             r"transcript\b)")
+
+
+def stamp_seconds(text: str) -> int:
+    """Seconds in a 12:34 or 1:02:03 stamp, or -1 when it is not one."""
+    parts = text.strip("() ").split(":")
+    if not all(part.isdigit() for part in parts):
+        return -1
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return int(minutes) * 60 + int(seconds) if int(seconds) < 60 else -1
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+        return int(hours) * 3600 + int(minutes) * 60 + int(seconds) if int(minutes) < 60 and int(seconds) < 60 else -1
+    return -1
+
+
+def page_lines(page: str) -> list[str]:
+    """A page as lines, so a list of timestamps stays a list of timestamps."""
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", page, flags=re.S | re.I)
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</li>|</div>|</h[1-6]>|</tr>", "\n", text)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    return [line for line in (re.sub(r"[ \t\u00a0]+", " ", line).strip() for line in text.split("\n")) if line]
+
+
+def chapters_from_page(page: str) -> list[dict]:
+    """The show's own timestamp list, as seconds and labels.
+
+    Shows publish chapters as text under a heading - "(00:00:47) - How Intel brings up a new process
+    node" - sometimes all on one line. Read only where a heading says they are, and only when there are
+    at least three: a lone timestamp in a sentence is a time, not an index.
+    """
+    lines = page_lines(page)
+    start = None
+    for index, line in enumerate(lines):
+        if CHAPTER_START.match(line) and len(line) < 120:
+            start = index + 1
+            break
+    pool = lines[start:] if start is not None else lines
+    found: list[dict] = []
+    for line in pool:
+        if CHAPTER_STOP.match(line) and found:
+            break
+        matches = list(STAMP.finditer(line))
+        if not matches:
+            if found:
+                break            # the list has ended
+            continue
+        for position, match in enumerate(matches):
+            seconds = stamp_seconds(match.group(1))
+            if seconds < 0:
+                continue
+            end = matches[position + 1].start() if position + 1 < len(matches) else len(line)
+            label = line[match.end():end].strip(" -\u2013\u2014:|()")
+            if label:
+                found.append({"at": seconds, "label": label[:140]})
+    return found if len(found) >= 3 else []
+
+
+def transcript_from_page(page: str) -> str:
+    """The transcript a show publishes on its own page, as paragraphs."""
+    lines = page_lines(page)
+    start = None
+    for index, line in enumerate(lines):
+        if TRANSCRIPT_START.match(line) and len(line) < 120:
+            start = index + 1
+    if start is None:
+        return ""
+    kept: list[str] = []
+    size = 0
+    for line in lines[start:]:
+        if TRANSCRIPT_STOP.match(line) and len(kept) > 5:
+            break
+        if len(line) < 2:
+            continue
+        kept.append(line)
+        size += len(line)
+        if size > EPISODE_TRANSCRIPT_LIMIT:
+            break
+    text = "\n\n".join(kept)
+    return text if len(text) >= 1500 else ""
+
+
+def episode_extras(url: str, cache: dict, budget: list[int]) -> dict:
+    """Chapters and a transcript for an episode whose feed carries neither."""
+    if not url.startswith("http") or re.search(r"\.(?:mp3|m4a|aac|ogg|wav)(?:\?|$)", url, re.I):
+        return {}
+    if url in cache and ("chapters" in cache[url] or "transcriptText" in cache[url]):
+        return cache[url]
+    if budget[0] <= 0:
+        return {}
+    found: dict = {}
+    try:
+        budget[0] -= 1
+        status, body, _ = fetch_with_retries(url, attempts=2)
+        if status < 400:
+            page = body.decode("utf-8", "replace")
+            chapters = chapters_from_page(page)
+            if chapters:
+                found["chapters"] = chapters
+            transcript = transcript_from_page(page)
+            if transcript:
+                found["transcriptText"] = transcript
+    except Exception as exc:      # noqa: BLE001 - an episode is not worth failing a run over
+        found["extrasError"] = f"{type(exc).__name__}"
+    if found:
+        cache[url] = {**(cache.get(url) or {}), **found}
+    return found
 
 
 def paywall_reasons(page: str) -> list[str]:
@@ -1142,8 +1277,8 @@ def run(args: argparse.Namespace) -> int:
                 "tier": source.get("tier", defaults.get("tier", 2)),
                 "published": published.isoformat(timespec="seconds") if published else None,
                 "author": raw["author"][:120],
-                "summary": summary_text(raw["summary"], raw["title"]),
-                "content": raw["content"][:8000],
+                "summary": deep_unescape(summary_text(raw["summary"], raw["title"])),
+                "content": deep_unescape(raw["content"])[:8000],
                 "contentFrom": "feed" if raw["has_full_text"] else "",
                 "image": raw["image"],
                 "aiTerms": ai_terms[:6],
@@ -1246,12 +1381,42 @@ def run(args: argparse.Namespace) -> int:
                             source_id, count, record.get("items", 0)))
     items = kept
 
+    # An episode whose feed carries neither chapters nor a transcript is a headline over a player. Shows
+    # publish both on their own episode page - timestamps under "Timestamps", a transcript under
+    # "Transcript" - so read that page. Budgeted and rotated like the article pages, because the live build
+    # has no cache between runs and the same ten episodes would otherwise be read every ten minutes.
+    episodes = [i for i in items if i.get("kind") == "podcast"
+                and not i.get("chapters") and not i.get("transcriptText")
+                and i.get("audio") and not re.search(r"\.(?:mp3|m4a|aac|ogg|wav)(?:\?|$)", i["url"], re.I)]
+    if episodes and not args.no_articles:
+        budget = [MAX_EPISODE_PAGES_PER_RUN]
+        rotation = int(now.timestamp() // 600)
+        episodes.sort(key=lambda i: hashlib.sha1((i["url"] + str(rotation)).encode("utf-8")).hexdigest())
+        read = 0
+        for item in episodes:
+            extras = episode_extras(item["url"], article_cache, budget)
+            if not extras:
+                continue
+            read += 1
+            if extras.get("chapters"):
+                item["chapters"] = extras["chapters"]
+            if extras.get("transcriptText"):
+                item["transcriptText"] = extras["transcriptText"]
+                item["transcriptFrom"] = "page"
+        if read:
+            log("read %d episode page(s) for chapters and transcripts" % read)
+
     # Whatever the article cache already knows still counts, even on a run that fetches nothing new:
     # otherwise --no-articles quietly strips the images and summaries earlier runs paid for.
     for item in items:
         cached_extra = article_cache.get(item["url"])
         if not cached_extra:
             continue
+        if cached_extra.get("chapters") and not item.get("chapters"):
+            item["chapters"] = cached_extra["chapters"]
+        if cached_extra.get("transcriptText") and not item.get("transcriptText"):
+            item["transcriptText"] = cached_extra["transcriptText"]
+            item["transcriptFrom"] = "page"
         if cached_extra.get("image") and not item["image"]:
             item["image"] = cached_extra["image"]
             item["imageFrom"] = "article"
@@ -1376,6 +1541,11 @@ def run(args: argparse.Namespace) -> int:
             "audio": item.get("audio", ""),
             "audioType": item.get("audioType", ""), "duration": item.get("duration", 0),
             "transcript": item.get("transcript", ""), "transcriptType": item.get("transcriptType", ""),
+            # Chapters and the text of a transcript read off the show's own episode page, for the shows
+            # whose feed carries neither.
+            "chapters": item.get("chapters", []),
+            "transcriptText": item.get("transcriptText", ""),
+            "transcriptFrom": item.get("transcriptFrom", ""),
         })
     DATA.joinpath("news.json").write_text(json.dumps({
         "generated": now.isoformat(timespec="seconds"),

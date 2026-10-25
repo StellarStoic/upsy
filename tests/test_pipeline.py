@@ -283,6 +283,7 @@ class PublishedSchema(unittest.TestCase):
                 "image", "imageAlt", "imageFrom", "author", "score", "breaking", "upsy", "aiTerms",
                 "siTerms", "upsyTerms", "upsyWhy", "promo", "question",
                 "kind", "audio", "audioType", "duration", "transcript", "transcriptType",
+                "chapters", "transcriptText",
                 "contentHtml")
 
     def test_real_output_has_every_field_the_site_reads(self):
@@ -1343,3 +1344,77 @@ class EpisodeAdmission(unittest.TestCase):
             if source.get("require_title"):
                 self.assertIsNone(source.get("minDescriptionChars"),
                                   f"{source['id']} lowered the description bar")
+
+
+class EpisodePageExtras(StoryPageFurniture):
+    """Chapters and a transcript read off the show's own page."""
+
+    PAGE = (
+        "<html><body><h2>Timestamps</h2>"
+        "<p>(00:00:00) – Intro</p><p>(00:00:47) – How Intel brings up a new process node</p>"
+        "<p>(00:03:22) – What Intel learned from 10nm</p><p>(00:13:13) – Why High-NA EUV pays off</p>"
+        "<h2>Sponsors</h2><p>(00:20:00) – A sponsor read that is not a chapter</p>"
+        "<h2>Transcript</h2>"
+        + "".join(f"<p>Speaker {i}</p><p>This is a long spoken line number {i} about semiconductors.</p>"
+                  for i in range(40))
+        + "<h2>Share</h2><p>Share this post</p></body></html>"
+    )
+
+    def test_chapters_are_read_with_their_seconds(self):
+        chapters = fetcher.chapters_from_page(self.PAGE)
+        self.assertEqual(len(chapters), 4)
+        self.assertEqual(chapters[0], {"at": 0, "label": "Intro"})
+        self.assertEqual(chapters[1]["at"], 47)
+        self.assertEqual(chapters[3]["at"], 793)
+        # the list stops at the next heading, so an advertised read is not a chapter
+        self.assertNotIn("A sponsor read that is not a chapter", [c["label"] for c in chapters])
+
+    def test_a_single_timestamp_is_not_a_chapter_list(self):
+        self.assertEqual(fetcher.chapters_from_page("<p>00:12:34 the middle of a sentence</p>"), [])
+
+    def test_the_transcript_is_read_and_stops_at_the_next_section(self):
+        text = fetcher.transcript_from_page(self.PAGE)
+        self.assertIn("long spoken line number 0", text)
+        self.assertIn("long spoken line number 39", text)
+        self.assertNotIn("Share this post", text)
+
+    def test_a_page_with_no_transcript_yields_none(self):
+        self.assertEqual(fetcher.transcript_from_page("<p>Notes and a player.</p>"), "")
+
+    def test_an_audio_url_is_not_an_episode_page(self):
+        self.assertEqual(fetcher.episode_extras("https://cdn.example.com/e.mp3", {}, [3]), {})
+
+    def test_the_episode_artwork_is_a_thumbnail_not_a_banner(self):
+        self.assertIn(".story.episode img.lead", build_site.CSS)
+        self.assertIn("max-width:300px", build_site.CSS)
+
+    def test_an_episode_page_shows_chapters_and_the_folded_transcript(self):
+        page = self.page(contentHtml="<p>A description.</p>",
+                         chapters=[{"at": 47, "label": "How Intel brings up a node"}],
+                         transcriptText="One line.\n\nAnother line.")
+        self.assertIn('class="chapter" data-at="47"', page)
+        self.assertIn("How Intel brings up a node", page)
+        self.assertIn('<details class="transcript">', page)
+        self.assertIn("Read the transcript", page)
+        self.assertIn("<p>Another line.</p>", page)
+
+    def test_an_episode_without_extras_has_no_empty_sections(self):
+        page = self.page(contentHtml="<p>A description.</p>")
+        self.assertNotIn('<details class="transcript">', page)
+        self.assertNotIn('class="chapters"', page)
+
+
+class EntitiesInText(unittest.TestCase):
+    """A feed that escapes its own escaping must not put &#8217; in a headline."""
+
+    def test_double_escaped_entities_are_undone(self):
+        self.assertEqual(fetcher.deep_unescape("Intel&amp;#8217;s most advanced fab"),
+                         "Intel\u2019s most advanced fab")
+
+    def test_a_single_escape_is_undone(self):
+        self.assertEqual(fetcher.deep_unescape("Intel&#8217;s fab"), "Intel\u2019s fab")
+        self.assertEqual(fetcher.deep_unescape("A &amp; B"), "A & B")
+
+    def test_a_plain_title_is_left_alone(self):
+        self.assertEqual(fetcher.deep_unescape("A plain title"), "A plain title")
+        self.assertEqual(fetcher.deep_unescape(""), "")

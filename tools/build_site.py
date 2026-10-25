@@ -525,6 +525,18 @@ CSS = """
   .story-top .crumb:hover { color:var(--link); }
   /* An episode is listened to, not read line by line: centred, with the player in the middle. */
   .story.episode { text-align:center; }
+  /* An episode's artwork is a thumbnail, not a banner: it identifies the show, the words are the page. */
+  .story.episode img.lead { width:auto; max-width:300px; max-height:300px; margin:14px auto;
+                            display:block; }
+  .chapters { list-style:none; margin:8px 0 22px; padding:0; display:flex; flex-wrap:wrap;
+              gap:6px 10px; justify-content:center; }
+  .chapters li { margin:0; }
+  .transcript { margin:26px auto 0; max-width:66ch; text-align:left; }
+  .transcript summary { cursor:pointer; font-family:var(--mono); font-size:11px; letter-spacing:.14em;
+                        text-transform:uppercase; color:var(--muted); padding:10px 0; }
+  .transcript p { margin:0 0 12px; }
+  h2.sub { font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+           color:var(--muted); font-weight:400; margin:26px 0 10px; }
   .story.episode .kicker { justify-content:center; }
   .story.episode h1 { font-size:29px; }
   .story.episode .body { max-width:66ch; margin:0 auto; }
@@ -1298,6 +1310,19 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         # framework") instead of a bare URL in a paragraph.
         body = chapterise(item["contentHtml"])
         note = ""
+        # The show's own index, when the feed did not carry it: times that seek the player.
+        if item.get("chapters"):
+            entries = "".join(
+                f'<li><button type="button" class="chapter" data-at="{int(chapter["at"])}">'
+                f'{esc(chapter["label"])}</button></li>'
+                for chapter in item["chapters"] if chapter.get("label"))
+            body += f'<h2 class="sub">Chapters</h2><ol class="chapters">{entries}</ol>'
+        # And the transcript, folded away: it is the page's evidence, not its first impression.
+        if item.get("transcriptText"):
+            paragraphs = "".join(f"<p>{esc(block)}</p>"
+                                 for block in item["transcriptText"].split("\n\n") if block.strip())
+            body += (f'<details class="transcript"><summary>Read the transcript</summary>'
+                     f'{paragraphs}</details>')
     elif item.get("content"):
         body = text_to_html(item["content"])
         note = ""
@@ -1388,7 +1413,8 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
             trimmed[show] = trimmed.get(show, 0) + 1
             continue
         length = duration_label(episode.get("duration"))
-        badges = ['<span class="badge">transcript</span>'] if episode.get("transcript") else []
+        badges = (['<span class="badge">transcript</span>']
+              if episode.get("transcript") or episode.get("transcriptText") else [])
         when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
         rows.append(f'<article class="listen-item" data-src="{src_key(episode["sourceName"])}">\n'
                     f'      <div class="kicker"><span>{esc(episode["sourceName"])}</span>'
