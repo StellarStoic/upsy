@@ -1505,3 +1505,34 @@ class WalledArticlesAreDropped(unittest.TestCase):
                      "<p>1) a</p><p>2) b</p><p>3) c</p>",
                      '<p>See <a href="https://x/1)">this</a></p>'):
             self.assertEqual(build_site.numbered_lines(html), html)
+
+
+class ScrollMemory(unittest.TestCase):
+    """Coming back from an episode should land where the reader left the list."""
+
+    def listen_page(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"kind": "podcast", "audio": "https://cdn.example.com/e.mp3", "duration": 1800})
+        return build_site.build_listen([item], build_site.datetime.now(build_site.timezone.utc), {})
+
+    def test_the_podcast_list_keeps_the_position(self):
+        page = self.listen_page()
+        self.assertIn('id="scroll-memory"', page)
+        self.assertIn("history.scrollRestoration = 'manual'", page)
+        self.assertIn("upsy:scroll:' + location.pathname", page)
+
+    def test_it_only_restores_on_the_way_back(self):
+        page = self.listen_page()
+        self.assertIn("back_forward", page)
+        self.assertIn("referrer", page)
+        self.assertIn("/s/", page)
+
+    def test_a_story_page_does_not_carry_the_list_script(self):
+        page = build_site.build_story(StoryPageFurniture.ITEM, [],
+                                      build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertNotIn('id="scroll-memory"', page)
+
+    def test_the_front_page_carries_it_too(self):
+        source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
+        # both page templates interpolate the same script
+        self.assertEqual(source.count("{SCROLL_JS}"), 2)

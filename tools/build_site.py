@@ -993,6 +993,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
   }};
 }})();
 </script>
+{SCROLL_JS}
 </body></html>
 """
 
@@ -1081,6 +1082,53 @@ LISTEN_DRAWER = """<div class="net-backdrop" id="net-backdrop"></div>
   <div class="net" id="net">{net_rows}</div>
   <p class="net-all"><a href="/sources.html">every source &amp; the method</a></p>
 </aside>"""
+
+SCROLL_JS = """<script id="scroll-memory">
+(function () {
+  // A reader who opens an episode and comes back wants the list where they left it. The browser tries to
+  // do that by itself and loses it whenever the page grows under it: this site loads the rest of the wire
+  // after the first paint, so a restore that happens before those rows exist lands at the top. Keep the
+  // position by hand and keep trying until the page is tall enough to hold it.
+  if (!('scrollRestoration' in history)) return;
+  try { history.scrollRestoration = 'manual'; } catch (e) { return; }
+  var key = 'upsy:scroll:' + location.pathname;
+  var last = -1;
+  function save() {
+    var y = Math.round(window.scrollY || window.pageYOffset || 0);
+    if (y === last) return;
+    last = y;
+    try { sessionStorage.setItem(key, String(y)); } catch (e) {}
+  }
+  var scheduled = false;
+  window.addEventListener('scroll', function () {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(function () { scheduled = false; save(); }, 150);
+  }, { passive: true });
+  window.addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') save();
+  });
+  // Only on the way back: a fresh tap on "Podcasts" starts at the top, a return from one of our own story
+  // pages does not.
+  var nav = (performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+  var returning = nav.type === 'back_forward' ||
+                  (document.referrer || '').indexOf(location.origin + '/s/') === 0;
+  if (!returning) return;
+  var target = 0;
+  try { target = parseInt(sessionStorage.getItem(key) || '0', 10) || 0; } catch (e) { target = 0; }
+  if (target < 40) return;
+  var tries = 0;
+  function attempt() {
+    tries++;
+    window.scrollTo(0, target);
+    if (Math.abs((window.scrollY || 0) - target) > 6 && tries < 60) setTimeout(attempt, 60);
+  }
+  if (document.readyState === 'complete') attempt();
+  else window.addEventListener('load', attempt);
+})();
+</script>"""
+
 
 LISTEN_JS = """<script>
 (function () {
@@ -1523,6 +1571,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
 </main>
 {footer(len(episodes), len({e['sourceName'] for e in episodes}))}
 {LISTEN_JS}
+{SCROLL_JS}
 </body></html>
 """)
 
