@@ -1177,6 +1177,43 @@ LINE_START = re.compile(
     r"(\(?\s*\d{1,3}:\d{2}(?::\d{2})?\s*\)?)(?=[\s&]|$|<(?![/]))")
 
 
+# A description often carries its list inline: "We cover: 1) Is Sundar Pichai team product or team model?
+# 2) Google's attempt to build a unified assistant 3) Which Google teams get priority? …" - eleven items
+# run together into one paragraph, which is a wall of words rather than a list. When the numbering counts
+# up from one, each item gets its own line.
+NUMBERED_ITEM = re.compile(r"(?<![\w)\]])(\d{1,2})[.)]\s+")
+
+
+def numbered_lines(html: str) -> str:
+    """Put each item of an inline numbered list on its own line.
+
+    Only a list that counts up from one is touched, and only three items or more: "1) only" is a
+    parenthetical, "3) reasons" is not a list at all, and a reference to "2)" further down an article is
+    a reference. Tags are stepped over so attribute text and links are never rewritten.
+    """
+    parts = re.split(r"(<[^>]+>)", html)
+    for index, part in enumerate(parts):
+        if not part or part.startswith("<"):
+            continue
+        matches = list(NUMBERED_ITEM.finditer(part))
+        if len(matches) < 3:
+            continue
+        numbers = [int(match.group(1)) for match in matches]
+        if numbers != list(range(1, len(numbers) + 1)):
+            continue
+        pieces, last = [], 0
+        for match in matches:
+            before = part[last:match.start()]
+            pieces.append(before)
+            # the intro sentence ends where the list starts, so the first item gets a line of its own too
+            if before.strip():
+                pieces.append("<br>")
+            last = match.start()
+        pieces.append(part[last:])
+        parts[index] = "".join(pieces)
+    return "".join(parts)
+
+
 def chapterise(html: str) -> str:
     """A timestamp at the start of a description line becomes a button that seeks the player.
 
@@ -1328,7 +1365,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
         # An episode keeps the description's own markup: the sponsors are already gone from it, and
         # its links stay clickable with the words the show gave them ("LinkedIn", "Go Exploit
         # framework") instead of a bare URL in a paragraph.
-        body = chapterise(item["contentHtml"])
+        body = chapterise(numbered_lines(item["contentHtml"]))
         note = ""
         # The show's own index, when the feed did not carry it: times that seek the player.
         if item.get("chapters"):

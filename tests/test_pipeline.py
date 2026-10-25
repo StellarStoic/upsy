@@ -1490,3 +1490,18 @@ class WalledArticlesAreDropped(unittest.TestCase):
     def test_the_agenda_heading_survives(self):
         page = build_site.chapterise("<p><strong>AGENDA:</strong></p><p>05:00 Opening<br> 19:00 Second</p>")
         self.assertIn("<strong>AGENDA:</strong>", page)
+
+    def test_an_inline_numbered_list_gets_a_line_each(self):
+        html = ("<p>We cover: 1) Team product or team model? 2) A unified assistant "
+                "3) Which teams get priority? 4) Cloud allocation</p>")
+        out = build_site.numbered_lines(html)
+        self.assertEqual(out.count("<br>"), 4)
+        self.assertIn("We cover: <br>1) Team product", out)
+        self.assertIn("<br>4) Cloud allocation", out)
+
+    def test_a_number_that_is_not_a_list_is_left_alone(self):
+        for html in ("<p>There are 3) reasons and 2) more.</p>",
+                     "<p>We cover: 1) one thing only.</p>",
+                     "<p>1) a</p><p>2) b</p><p>3) c</p>",
+                     '<p>See <a href="https://x/1)">this</a></p>'):
+            self.assertEqual(build_site.numbered_lines(html), html)
