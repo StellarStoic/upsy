@@ -49,6 +49,9 @@ jobs:
             data/images
             data/shots
             data/shots.json
+            # what the builder could not picture: the screenshot step reads it on the next run, so it has
+            # to survive the gap between runs or the step always sees an empty list
+            data/pictures.json
           key: upsy-state-${{ github.run_id }}
           restore-keys: |
             upsy-state-
