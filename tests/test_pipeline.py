@@ -1418,3 +1418,18 @@ class EntitiesInText(unittest.TestCase):
     def test_a_plain_title_is_left_alone(self):
         self.assertEqual(fetcher.deep_unescape("A plain title"), "A plain title")
         self.assertEqual(fetcher.deep_unescape(""), "")
+
+
+class CacheDoesNotOutliveItsVerdict(unittest.TestCase):
+    """A page cached before a rule existed has still never been judged by it."""
+
+    def test_an_unjudged_cache_entry_is_read_again(self):
+        source = pathlib.Path("tools/fetch.py").read_text(encoding="utf-8")
+        # the cache is only trusted when it carries the wall verdict
+        self.assertIn('existing.get("paywallChecked")', source)
+        self.assertIn('found["paywallChecked"] = True', source)
+
+    def test_an_episode_page_with_nothing_on_it_is_settled_for_a_week(self):
+        source = pathlib.Path("tools/fetch.py").read_text(encoding="utf-8")
+        self.assertIn('existing.get("extrasChecked")', source)
+        self.assertIn('found["extrasChecked"]', source)

@@ -944,8 +944,17 @@ def episode_extras(url: str, cache: dict, budget: list[int]) -> dict:
     """Chapters and a transcript for an episode whose feed carries neither."""
     if not url.startswith("http") or re.search(r"\.(?:mp3|m4a|aac|ogg|wav)(?:\?|$)", url, re.I):
         return {}
-    if url in cache and ("chapters" in cache[url] or "transcriptText" in cache[url]):
-        return cache[url]
+    existing = cache.get(url) or {}
+    if existing.get("chapters") or existing.get("transcriptText"):
+        return existing
+    # A page read once and found to have neither is settled for a week: it costs a request, and a show
+    # that posts its transcript later is picked up again without re-reading it every ten minutes.
+    if existing.get("extrasChecked"):
+        try:
+            if (datetime.now(timezone.utc) - datetime.fromisoformat(existing["extrasChecked"])).days < 7:
+                return {}
+        except Exception:      # noqa: BLE001 - a broken timestamp just means read it again
+            pass
     if budget[0] <= 0:
         return {}
     found: dict = {}
@@ -960,6 +969,7 @@ def episode_extras(url: str, cache: dict, budget: list[int]) -> dict:
             transcript = transcript_from_page(page)
             if transcript:
                 found["transcriptText"] = transcript
+            found["extrasChecked"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     except Exception as exc:      # noqa: BLE001 - an episode is not worth failing a run over
         found["extrasError"] = f"{type(exc).__name__}"
     if found:
@@ -989,12 +999,14 @@ def paywall_reasons(page: str) -> list[str]:
 
 def enrich_article(url: str, cache: dict[str, dict], budget: list[int]) -> dict:
     """An article page asked for one thing only: what the feed did not already give us."""
-    if url in cache:
-        return cache[url]
+    # A page cached before the wall check existed has never been judged, and answering from the cache
+    # would carry that silence forward forever. Only a page that has been looked at and settled - walls
+    # found, or an explicit all-clear - is answered from the cache.
+    for existing in (cache.get(url), ARTICLE_CACHE.get(url)):
+        if existing and existing.get("paywallChecked"):
+            return existing
     if budget[0] <= 0:
         return {}
-    if url in ARTICLE_CACHE:
-        return ARTICLE_CACHE[url]
     found: dict = {}
     try:
         budget[0] -= 1
@@ -1023,6 +1035,7 @@ def enrich_article(url: str, cache: dict[str, dict], budget: list[int]) -> dict:
             walls = paywall_reasons(page)
             if walls:
                 found["paywalled"] = walls
+            found["paywallChecked"] = True
     except Exception as exc:  # noqa: BLE001 - enrichment is best effort, never fatal
         found["error"] = f"{type(exc).__name__}"
     ARTICLE_CACHE[url] = found
