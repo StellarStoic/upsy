@@ -813,6 +813,11 @@ PAYWALL_MARKERS = (
 PAYWALL_READABLE_WORDS = 400   # an article this long is readable, whatever the page advertises
 
 
+def readable_words(item: dict) -> int:
+    """How much of an item there is to read on our own page."""
+    return len((item.get("content") or item.get("summary") or "").split())
+
+
 def page_words(page: str) -> int:
     """How many words of article a page shows - paragraphs, not furniture.
 
@@ -1183,8 +1188,16 @@ def run(args: argparse.Namespace) -> int:
     # Enrich with the article page only where it changes the card.
     budget = [0 if args.no_articles else MAX_ARTICLES_PER_RUN]
     if budget[0]:
-        wanted = [i for i in items if i["fetchArticle"] and (not i["image"] or len(i["summary"]) < 220)]
-        wanted.sort(key=lambda i: (i["published"] or ""), reverse=True)
+        # A page is read for three reasons: no picture, a summary too short to show, or an item with so
+        # little text that it is worth asking whether the article is even there. The third reason is the
+        # paywall check, and it is why the order rotates: the budget is per run and the live build has no
+        # cache between runs, so newest-first would read the same sixty pages every ten minutes and never
+        # reach the rest. A slice keyed on the clock covers the whole wire within the hour.
+        wanted = [i for i in items if i["fetchArticle"] and (
+            not i["image"] or len(i["summary"]) < 220 or readable_words(i) < 120)]
+        rotation = int(now.timestamp() // 600)
+        wanted.sort(key=lambda i: hashlib.sha1(
+            (i["url"] + str(rotation)).encode("utf-8")).hexdigest())
         for item in wanted:
             extra = enrich_article(item["url"], article_cache, budget)
             if extra.get("image") and not item["image"]:
