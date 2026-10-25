@@ -127,6 +127,25 @@ def picture_of(item: dict) -> str:
     return item.get("imageLocal") or ""
 
 
+PICTURE_REASONS: dict[str, int] = {}
+
+
+def picture_failed(reason: str) -> str:
+    """Count why a picture could not be kept, instead of failing silently.
+
+    Every card without a picture used to be indistinguishable from every other one: no local copy, no
+    reason, nothing to fix. The counts are published (see `pictures_note`) so the answer is readable from
+    the page itself, and so the screenshot step knows which stories wanted a picture and did not get one.
+    """
+    PICTURE_REASONS[reason] = PICTURE_REASONS.get(reason, 0) + 1
+    return ""
+
+
+# A site's own icon is not a story's picture. Feeds hand these over constantly - a LessWrong favicon on
+# sixteen items, TechCrunch's on eight - and they are the wrong shape for a card and the wrong idea.
+ICON_URL = re.compile(r"(?i)favicon|apple-icon|/logo[.\-_]|cropped-favicon")
+
+
 def mirror_picture(url: str) -> str:
     """Fetch one picture, shrink it, and return the path it is served from ("" when it cannot be)."""
     import hashlib
@@ -134,7 +153,9 @@ def mirror_picture(url: str) -> str:
     import urllib.request
 
     if not url.startswith("http"):
-        return ""
+        return picture_failed("not a url")
+    if ICON_URL.search(url):
+        return picture_failed("a site icon, not a picture")
     # The processing recipe is part of the key: a cache written before the pictures were shrunk
     # holds full-size originals, and reusing one would keep serving megabytes.
     # v2: the first pass left animated gifs at their original size, and the key has to change when the
@@ -153,18 +174,23 @@ def mirror_picture(url: str) -> str:
                 "User-Agent": "upsy.si/1.0 (+https://upsy.si/)", "Referer": "https://upsy.si/"})
             with urllib.request.urlopen(request, timeout=20) as response:
                 data = response.read(MAX_IMAGE_BYTES + 1)
-            expected = response.headers.get("Content-Length")
-        except Exception:
-            return ""
-        if not data or len(data) > MAX_IMAGE_BYTES:
-            return ""
+                expected = response.headers.get("Content-Length")
+                kind = response.headers.get("Content-Type") or ""
+        except Exception as exc:                       # noqa: BLE001 - a picture is never fatal
+            return picture_failed(type(exc).__name__)
+        if "icon" in kind.lower():
+            return picture_failed("a site icon, not a picture")
+        if not data:
+            return picture_failed("an empty body")
+        if len(data) > MAX_IMAGE_BYTES:
+            return picture_failed("bigger than the download cap")
         # A truncated download starts with the right magic bytes and still renders as a broken image,
         # so a declared length that does not match is a failed download, not a picture.
         if expected and expected.isdigit() and int(expected) != len(data):
-            return ""
+            return picture_failed("truncated download")
         suffix = image_suffix(data)
         if not suffix:
-            return ""       # a challenge page or an error page, not a picture
+            return picture_failed("not a picture (a challenge or error page)")
         data, suffix = optimise_picture(data, suffix)
         stored = IMAGE_CACHE / (digest + suffix)
         stored.write_bytes(data)
@@ -186,7 +212,7 @@ def cache_moment_images(moments: dict) -> int:
     return mirrored
 
 
-def cache_images(items: list[dict], limit: int = 200) -> int:
+def cache_images(items: list[dict], limit: int = 400) -> int:
     """Keep a copy of each story's picture inside the site.
 
     Hotlinking a publisher's CDN is both fragile - plenty of them refuse a request with a Referer
@@ -204,11 +230,44 @@ def cache_images(items: list[dict], limit: int = 200) -> int:
     (SITE / "img").mkdir(exist_ok=True)
     wanted = [i for i in items if picture_of(i) == "" and (i.get("image") or "").startswith("http")][:limit]
 
-    with futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with futures.ThreadPoolExecutor(max_workers=6) as pool:
         for item, local in zip(wanted, pool.map(lambda i: mirror_picture(i["image"]), wanted)):
             if local:
                 item["imageLocal"] = local
-    return sum(1 for item in items if item.get("imageLocal"))
+    mirrored = sum(1 for item in items if item.get("imageLocal"))
+    unpictured = [i["url"] for i in items
+                  if not i.get("imageLocal") and (i.get("image") or "").startswith("http")]
+    record = {
+        "mirrored": mirrored,
+        "withPicture": sum(1 for i in items if i.get("image")),
+        "noPictureAtAll": sum(1 for i in items if not (i.get("image") or "")),
+        "failed": len(unpictured),
+        "reasons": dict(sorted(PICTURE_REASONS.items(), key=lambda pair: -pair[1])),
+        "unpictured": unpictured[:400],
+    }
+    (DATA / "pictures.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+    if PICTURE_REASONS:
+        print("   pictures: %d mirrored, %d unpictured - %s" % (
+            mirrored, len(unpictured),
+            ", ".join("%s %d" % pair for pair in record["reasons"].items())))
+    return mirrored
+
+
+def pictures_note() -> str:
+    """What happened to the pictures, readable from the published page."""
+    path = DATA / "pictures.json"
+    if not path.exists():
+        return "not run"
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:                                  # noqa: BLE001 - a note is not worth a failure
+        return "unreadable"
+    if not record.get("failed") and not record.get("noPictureAtAll"):
+        return "%d pictured" % record.get("mirrored", 0)
+    reasons = ", ".join("%s %d" % pair for pair in (record.get("reasons") or {}).items())
+    return "%d pictured, %d wanted one (%s)" % (
+        record.get("mirrored", 0),
+        record.get("failed", 0) + record.get("noPictureAtAll", 0), reasons or "no reason recorded")
 
 
 def shot_note() -> str:
@@ -590,6 +649,7 @@ BASE_HEAD = """<!doctype html>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <meta name="upsy-editor" content="{editor}">
 <meta name="upsy-shots" content="{shots}">
+<meta name="upsy-pictures" content="{pictures}">
 <style>{css}</style>
 </head>
 <body>
@@ -897,6 +957,7 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
+        pictures=esc(pictures_note()),
         title="upsy.si \u2014 watching superintelligence happen",
         description=truncate("Live wire on superintelligence: breaking news and upsy moments in AI, "
                              f"from {counts['sources']} sources and {counts['items']} stories.", 200),
@@ -1462,6 +1523,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
+        pictures=esc(pictures_note()),
         title=f"{truncate(item['title'], 90)} | upsy.si",
         description=truncate(item["summary"] or item["title"], 200),
         canonical=f"{SITE_URL}/s/{item['id']}/", og_type="article", site_name=SITE_NAME,
@@ -1605,6 +1667,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
+        pictures=esc(pictures_note()),
         title="Podcasts | upsy.si",
         description=("AI podcasts worth the time, each with a description you can read before you press "
                      "play and a player that asks the publisher's host for the file only when you do."),
@@ -1669,6 +1732,7 @@ def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> st
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
+        pictures=esc(pictures_note()),
         title="sources | upsy.si", description="Every feed upsy.si reads, with its health and freshness.",
         canonical=f"{SITE_URL}/sources.html", og_type="website", site_name=SITE_NAME,
         og_title="sources | upsy.si", og_description="Every feed upsy.si reads, with health and freshness.",

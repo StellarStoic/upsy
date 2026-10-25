@@ -1617,3 +1617,39 @@ class EnergyVocabulary(unittest.TestCase):
                                ("fine-tuning a small model", "fine-tun*"),
                                ("quantized to four bits", "quantiz*")):
             self.assertIn(term, fetcher.matches(scoring, haystack), haystack)
+
+
+class PicturesSayWhy(unittest.TestCase):
+    """A card with no picture is a bug or a decision, and the difference has to be readable."""
+
+    def test_a_site_icon_is_not_a_story_picture(self):
+        for url in ("https://res.cloudinary.com/lesswrong-2-0/image/upload/favicon.ico",
+                    "https://openai.com/apple-icon.png",
+                    "https://techcrunch.com/wp-content/uploads/2015/02/cropped-cropped-favicon.png",
+                    "https://www.marktechpost.com/wp-content/uploads/2022/04/cropped-Favicon-1.png"):
+            self.assertTrue(build_site.ICON_URL.search(url), url)
+        for url in ("https://cdn.arstechnica.net/wp-content/uploads/2026/10/x.jpg",
+                    "https://substackcdn.com/image/fetch/abc.png"):
+            self.assertFalse(build_site.ICON_URL.search(url), url)
+
+    def test_refusing_a_picture_counts_a_reason(self):
+        build_site.PICTURE_REASONS.clear()
+        self.assertEqual(build_site.mirror_picture("https://x/favicon.ico"), "")
+        self.assertEqual(build_site.PICTURE_REASONS.get("a site icon, not a picture"), 1)
+        self.assertEqual(build_site.mirror_picture("not-a-url"), "")
+        self.assertIn("not a url", build_site.PICTURE_REASONS)
+
+    def test_the_note_says_what_happened_in_words(self):
+        self.assertIn("pictured", build_site.pictures_note())
+
+    def test_the_screenshot_step_takes_stories_whose_picture_was_refused(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import screenshots
+        item = {"url": "https://example.com/a", "image": "https://example.com/favicon.ico"}
+        kept = {"url": "https://example.com/b", "image": "https://cdn.example.com/p.jpg"}
+        today = build_site.datetime.now(build_site.timezone.utc).date()
+        picked = screenshots.select([item, kept], {}, {}, 160, 60, today, False,
+                                   {"https://example.com/a"})
+        self.assertEqual([i["url"] for i in picked], ["https://example.com/a"])
+        # and without the list, a story that claims a picture is skipped
+        self.assertEqual(screenshots.select([item, kept], {}, {}, 160, 60, today, False, set()), [])

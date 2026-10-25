@@ -69,17 +69,36 @@ def existing_shot(url: str) -> pathlib.Path | None:
     return next((p for p in SHOTS.glob(digest(url) + ".*") if p.stat().st_size >= MIN_BYTES), None)
 
 
+def unpictured_urls() -> set:
+    """Stories whose own picture could not be kept by the build, so a card has nothing to show.
+
+    The builder drops a picture it cannot mirror, shrink or validate, and a story with an unmirrorable
+    image used to look "pictured" to this step and was skipped - which is how a card ended up with an
+    empty placeholder and no screenshot either. The builder writes what it could not keep, and those
+    stories are candidates here.
+    """
+    path = NEWS.parent / "pictures.json"
+    if not path.exists():
+        return set()
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:                                  # noqa: BLE001 - a missing list is not a failure
+        return set()
+    return set(record.get("unpictured") or [])
+
+
 def select(items: list[dict], shots: dict, failures: dict, limit: int, most: int,
-           today: dt.date, force: bool = False) -> list[dict]:
+           today: dt.date, force: bool = False, unpictured: set | None = None) -> list[dict]:
     """The stories that need a picture: no image of their own, no shot yet, not recently refused.
 
     Pure on purpose - it is the part worth testing, and it is the part that decides the run's cost.
     """
+    unpictured = unpictured or set()
     picked: list[dict] = []
     for item in items[:limit]:
-        if item.get("image"):
-            continue                      # the feed or the article page already gave us a picture
         url = item.get("url") or ""
+        if item.get("image") and url not in unpictured:
+            continue                      # the feed or the article page already gave us a picture
         if not url.startswith("http"):
             continue
         record = shots.get(url) or {}
@@ -164,7 +183,7 @@ def main() -> int:
     failures: dict = shots.pop(".failures", {}) if isinstance(shots.get(".failures"), dict) else {}
 
     today = dt.datetime.now(dt.timezone.utc).date()
-    todo = select(items, shots, failures, args.limit, args.max, today, args.force)
+    todo = select(items, shots, failures, args.limit, args.max, today, args.force, unpictured_urls())
     print(f"{len(items)} story(ies); {sum(1 for i in items if i.get('image'))} already have a picture; "
           f"{len(todo)} need a screenshot")
 
