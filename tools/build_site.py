@@ -117,6 +117,55 @@ def optimise_picture(data: bytes, suffix: str) -> tuple[bytes, str]:
     return smaller, ".webp"
 
 
+def tile_hue(name: str) -> int:
+    """A colour for a story's tile, the same colour every build.
+
+    Derived from the source's name so a card is recognisable before it is read - a small map of who is
+    talking - and derived *stably*, because a hue that changes between builds is decoration that moves.
+    """
+    seed = sum((index + 1) * ord(letter) for index, letter in enumerate((name or "upsy").lower()))
+    return seed % 360
+
+
+def tile_initials(name: str) -> str:
+    """At most two letters: "The Verge" is V, "MIT Technology Review" is MT, "OpenAI" is OA.
+
+    A name written as one word is split where the capitals are, because "OpenAI" is two ideas and "OP" is
+    neither of them; a name with only one part keeps a single letter, which reads as a monogram rather than
+    as a clipped word.
+    """
+    words = [word for word in re.split(r"[^A-Za-z0-9]+", name or "") if word]
+    words = [word for word in words if word.lower() not in {"the", "a", "of", "and"}]
+    if not words:
+        return "\u00b7"
+    parts: list[str] = []
+    for word in words:
+        camel = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z0-9]+|[A-Z]", word)
+        parts.extend(camel or [word])
+        if len(parts) >= 2:
+            break
+    if len(parts) == 1:
+        return parts[0][0].upper()
+    return (parts[0][0] + parts[1][0]).upper()
+
+
+def thumb_of(item: dict) -> str:
+    """The card's picture, or a tile that says who is talking.
+
+    A card with an empty box is a hole in the page: a story whose publisher gave no picture and whose
+    screenshot failed still has a source, and the source's initials on its own colour are something to
+    show. Nothing is fetched and nothing is generated - it is two letters and a hue - so it costs the page
+    nothing and can never fail.
+    """
+    picture = picture_of(item)
+    if picture:
+        return (f'<img class="thumb" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" '
+                f'loading="lazy" width="112" height="76">')
+    name = item.get("sourceName") or ""
+    return (f'<div class="thumb tile" style="--hue:{tile_hue(name)}" aria-hidden="true">'
+            f'<span>{esc(tile_initials(name))}</span></div>')
+
+
 def picture_of(item: dict) -> str:
     """The picture this build actually has a copy of, or nothing.
 
@@ -586,6 +635,13 @@ CSS = """
   .story-top .crumb { font-size:12px; color:var(--dim); text-decoration:none; }
   .story-top .crumb:hover { color:var(--link); }
   /* An episode is listened to, not read line by line: centred, with the player in the middle. */
+  /* A story with no picture still gets a square: the source's initials on a colour of its own, so a card
+     is recognisable by who is talking rather than a hole in the page. Two letters and a hue - nothing
+     fetched, nothing generated, nothing that can fail. */
+  .thumb.tile { display:grid; place-items:center; border:1px solid var(--line);
+                background:linear-gradient(135deg, hsl(var(--hue,210) 32% 15%), hsl(var(--hue,210) 28% 9%)); }
+  .thumb.tile span { font-family:var(--mono); font-size:20px; font-weight:700; letter-spacing:.1em;
+                     color:hsl(var(--hue,210) 62% 70%); opacity:.9; }
   /* An opened item keeps its place and gains a rail down its left edge, with the headline softened to
      roughly three quarters strength. Scannable as a column, quiet enough to ignore, and it survives a
      row without a picture. The rail is an inset shadow, so nothing shifts when it appears. */
@@ -710,8 +766,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     if item.get("promo"):
         tags.append('<span class="tag q">promo</span>')
     picture = picture_of(item)
-    image = (f'<img class="thumb" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" loading="lazy" width="112" height="76">'
-             if picture else '<div class="thumb empty" aria-hidden="true"></div>')
+    image = thumb_of(item)
     trace = " ".join(f"<i>{esc(t)}</i>" for t in ((item.get("aiTerms") or [])[:2] + (item.get("siTerms") or [])[:3]))
     dek = f'<p class="dek">{esc(truncate(item["summary"], 190))}</p>' if item.get("summary") else ""
     meter = min(100.0, max(5.0, float(item["score"]) * 0.7))
@@ -1009,7 +1064,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     if (item.upsy) tags.push('<span class="tag upsy">anomaly</span>');
     const image = item.image
       ? '<img class="thumb" src="' + item.image + '" alt="" loading="lazy" width="112" height="76">'
-      : '<div class="thumb empty" aria-hidden="true"></div>';
+      : '<div class="thumb tile" style="--hue:' + item.hue + '" aria-hidden="true"><span>'
+        + item.initials + '</span></div>';
     const dek = item.summary ? '<p class="dek">' + item.summary.slice(0, 190) + '</p>' : '';
     const meter = Math.min(100, Math.max(5, item.score * 0.7)).toFixed(0);
     const article = document.createElement('article');
@@ -1850,6 +1906,9 @@ def main() -> int:
                                "sourceName": esc(i["sourceName"]), "summary": esc(truncate(i["summary"], 200)),
                                "image": esc(picture_of(i)), "score": i["score"], "breaking": i["breaking"],
                                "src": src_key(i["sourceName"]),
+                               # what a card draws when there is no picture: two letters and a hue
+                               "initials": esc(tile_initials(i["sourceName"])),
+                               "hue": tile_hue(i["sourceName"]),
                                "upsy": i["upsy"], "age": age(i["published"], now)}
                               for i in stories_of(items)]},
                    ensure_ascii=False), encoding="utf-8")

@@ -1689,3 +1689,37 @@ class PicturesSayWhy(unittest.TestCase):
         source = pathlib.Path("tools/screenshots.py").read_text(encoding="utf-8")
         self.assertIn("the same page as another shot", source)
         self.assertIn("dropped a repeated shot", source)
+
+class NoEmptyCards(unittest.TestCase):
+    """A card with no picture still shows something."""
+
+    def test_a_pictureless_card_carries_a_tile_not_a_hole(self):
+        item = {"id": "x", "sourceName": "The Verge", "title": "A headline", "imageLocal": ""}
+        markup = build_site.thumb_of(item)
+        self.assertIn('class="thumb tile"', markup)
+        self.assertIn('style="--hue:', markup)
+        self.assertIn("<span>V</span>", markup)
+        self.assertNotIn("thumb empty", markup)
+
+    def test_a_card_with_a_picture_still_uses_it(self):
+        item = {"id": "x", "sourceName": "The Verge", "imageLocal": "/img/abc.webp", "imageAlt": "a photo"}
+        markup = build_site.thumb_of(item)
+        self.assertIn('<img class="thumb" src="/img/abc.webp"', markup)
+        self.assertNotIn("thumb tile", markup)
+
+    def test_the_initials_read_as_a_monogram(self):
+        cases = {"OpenAI": "OA", "LessWrong": "LW", "Anthropic": "A", "The Verge": "V",
+                 "MIT Technology Review": "MT", "Hacker News": "HN", "Google DeepMind": "GD"}
+        for name, expected in cases.items():
+            self.assertEqual(build_site.tile_initials(name), expected, name)
+
+    def test_the_colour_is_the_same_every_build(self):
+        self.assertEqual(build_site.tile_hue("The Verge"), build_site.tile_hue("The Verge"))
+        self.assertNotEqual(build_site.tile_hue("The Verge"), build_site.tile_hue("Hacker News"))
+        self.assertTrue(0 <= build_site.tile_hue("anything") < 360)
+
+    def test_the_loader_carries_the_tile_for_rows_it_adds(self):
+        source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
+        self.assertIn('"initials": esc(tile_initials(i["sourceName"]))', source)
+        self.assertIn('"hue": tile_hue(i["sourceName"])', source)
+        self.assertNotIn('class="thumb empty"', source)
