@@ -1224,3 +1224,55 @@ class ListeningCap(unittest.TestCase):
     def test_every_episode_is_still_in_the_data_file(self):
         payload = json.loads((self.site / "data" / "episodes.json").read_text(encoding="utf-8"))
         self.assertEqual(len(payload["items"]), 18)
+
+
+class EpisodeAdmission(unittest.TestCase):
+    """A general show, and an episode nobody would press play on."""
+
+    def test_a_general_show_admits_only_episodes_that_name_it_in_the_headline(self):
+        source = {"require_title": ["ai", "agent*"]}
+        self.assertTrue(fetcher.title_hits(source, {"title": "Why AI is eating software"}))
+        self.assertTrue(fetcher.title_hits(source, {"title": "How agents break software"}))
+        self.assertFalse(fetcher.title_hits(
+            source, {"title": "A pottery masterclass", "summary": "we talk about AI for a minute"}))
+
+    def test_a_source_without_a_gate_keeps_everything(self):
+        self.assertEqual(fetcher.title_hits({}, {"title": "anything at all"}), [])
+
+    def test_the_gate_reads_words_not_letters(self):
+        source = {"require_title": ["ai"]}
+        self.assertFalse(fetcher.title_hits(source, {"title": "Against the again-and-again economy"}))
+
+    def test_an_episode_with_nothing_to_read_is_refused(self):
+        thin = {"kind": "podcast", "summary": "Ten minutes on models.", "transcript": ""}
+        self.assertTrue(fetcher.episode_is_thin({"kind": "podcast"}, thin))
+
+    def test_a_description_of_substance_is_admitted(self):
+        full = {"kind": "podcast", "summary": "x" * 400, "transcript": ""}
+        self.assertFalse(fetcher.episode_is_thin({"kind": "podcast"}, full))
+
+    def test_a_transcript_excuses_a_short_description(self):
+        episode = {"kind": "podcast", "summary": "", "transcript": "https://example.com/e.vtt"}
+        self.assertFalse(fetcher.episode_is_thin({"kind": "podcast"}, episode))
+
+    def test_a_show_may_lower_the_bar_for_itself(self):
+        episode = {"kind": "podcast", "summary": "x" * 90, "transcript": ""}
+        self.assertTrue(fetcher.episode_is_thin({"kind": "podcast"}, episode))
+        self.assertFalse(fetcher.episode_is_thin({"kind": "podcast", "minDescriptionChars": 60}, episode))
+
+    def test_a_news_item_is_never_thin(self):
+        self.assertFalse(fetcher.episode_is_thin({"kind": "news"}, {"kind": "news", "summary": ""}))
+
+    def test_the_general_shows_are_title_gated_and_only_two_are_throttled(self):
+        sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        gated = {s["id"] for s in sources if s.get("require_title")}
+        self.assertTrue({"lexfridman", "decoder", "ezra-klein", "allin", "oddlots",
+                         "techmeme-ridehome", "twentyvc"} <= gated)
+        throttled = {s["id"]: s["pollEveryHours"] for s in sources if s.get("pollEveryHours")}
+        for source_id, hours in throttled.items():
+            self.assertGreaterEqual(hours, 1, source_id)
+        # a title-gated show still needs a description on its episodes, like everything else
+        for source in sources:
+            if source.get("require_title"):
+                self.assertIsNone(source.get("minDescriptionChars"),
+                                  f"{source['id']} lowered the description bar")

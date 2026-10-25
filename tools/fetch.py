@@ -105,6 +105,19 @@ def passes_source_filter(source: dict, raw: dict) -> bool:
     return not (source.get("require") or []) or bool(source_topic_hits(source, raw))
 
 
+def title_hits(source: dict, raw: dict) -> list[str]:
+    """Which of a source's `require_title` terms the item's *headline* matches.
+
+    A general show mentions AI in the description of almost every episode ("...and what AI means for
+    it"), so a description gate would let the whole feed through. A headline that names it is the
+    honest signal: the episode is about the thing, not adjacent to it.
+    """
+    require = source.get("require_title") or []
+    if not require:
+        return []
+    return matches(require, raw.get("title") or "")
+
+
 def source_topic_hits(source: dict, raw: dict) -> list[str]:
     """Which of a source's own required terms one parsed item matches.
 
@@ -630,6 +643,25 @@ def clean_episode_html(raw_html: str) -> str:
     return "\n".join(kept)
 
 
+EPISODE_MIN_DESCRIPTION = 200   # characters of description before an episode is worth a row
+
+
+def episode_is_thin(source: dict, fields: dict) -> bool:
+    """True when an episode has neither a transcript nor enough words to read before pressing play.
+
+    An episode with a headline and one line of blurb is a dead end: the reader cannot judge whether it
+    is worth an hour, and the page has nothing on it but a player. A show may lower the bar with
+    `minDescriptionChars` when its feed is terse on purpose.
+    """
+    if fields.get("kind") != "podcast":
+        return False
+    if fields.get("transcript"):
+        return False
+    floor = int(source.get("minDescriptionChars", EPISODE_MIN_DESCRIPTION))
+    plain = fields.get("summary") or fields.get("content") or ""
+    return len(plain.strip()) < floor
+
+
 def episode_fields(source: dict, raw: dict) -> dict:
     """The fields that make an item an episode, or nothing at all.
 
@@ -919,6 +951,23 @@ def run(args: argparse.Namespace) -> int:
 
     def read_source(source: dict) -> tuple[dict, list[dict], str]:
         cached = feed_cache.get(source["url"], {})
+        # A feed that sends no ETag re-sends its whole body every time, and a general show's feed is
+        # megabytes for maybe one relevant episode a week. `pollEveryHours` skips the request entirely
+        # and re-uses what it gave us; feeds that answer conditional requests are never throttled,
+        # because asking them again costs a few hundred bytes.
+        throttle = float(source.get("pollEveryHours") or 0)
+        if throttle and cached.get("fetched"):
+            try:
+                last = datetime.fromisoformat(cached["fetched"])
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                waited = (now - last).total_seconds()
+                if waited < throttle * 3600:
+                    kept = reusable(_revive(item_cache.get(source["url"], [])))
+                    if kept:
+                        return (source, kept, f"polled {int(waited // 60)}m ago (kept {len(kept)})")
+            except Exception:      # noqa: BLE001 - a broken timestamp must not stop the source
+                pass
         etag = None if args.ignore_cache else cached.get("etag")
         modified = None if args.ignore_cache else cached.get("modified")
         if not item_cache.get(source["url"]):
@@ -983,6 +1032,7 @@ def run(args: argparse.Namespace) -> int:
     for source, items, status in results:
         fresh = 0
         filtered = 0
+        thin = 0
         newest = None
         # A per-source topical filter ("require" in sources.json): The Anarchist Library publishes
         # every text it archives, so the whole feed is only useful once it is narrowed to the pieces
@@ -995,6 +1045,12 @@ def run(args: argparse.Namespace) -> int:
             if require and not ai_terms:
                 filtered += 1
                 continue
+            if source.get("require_title"):
+                title_terms = title_hits(source, raw)
+                if not title_terms:
+                    filtered += 1
+                    continue
+                ai_terms = ai_terms or title_terms
             identifier = hashlib.sha1(clean_url(raw["link"]).encode("utf-8")).hexdigest()[:16]
             published = raw.get("published_dt") or raw.get("published")
             if published and (now - published).days > KEEP_DAYS:
@@ -1024,9 +1080,15 @@ def run(args: argparse.Namespace) -> int:
                 "fetchArticle": source.get("fetchArticle", defaults.get("fetchArticle", True)),
                 **episode_fields(source, raw),
             })
+            if episode_is_thin(source, collected[-1]):
+                collected.pop()
+                thin += 1
+                continue
+        if thin:
+            status = f"{status} ({thin} thin)"
         health.append({
             "id": source["id"], "name": source["name"], "status": status, "items": len(items),
-            "new": fresh, "filtered": filtered,
+            "new": fresh, "filtered": filtered, "thin": thin,
             "newest": newest.isoformat(timespec="seconds") if newest else None,
         })
 
