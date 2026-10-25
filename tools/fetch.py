@@ -22,10 +22,12 @@ import argparse
 import concurrent.futures as futures
 import hashlib
 import html
+import ipaddress
 import json
 import os
 import pathlib
 import re
+import socket
 import sys
 import time
 import unicodedata
@@ -226,15 +228,62 @@ def log(message: str) -> None:
 
 # --------------------------------------------------------------------------- fetching
 
-def fetch(url: str, etag: str | None = None, modified: str | None = None) -> tuple[int, bytes, dict]:
+def is_public_url(url: str) -> bool:
+    """True only for an http(s) URL that resolves to a public address.
+
+    Article links and picture URLs come out of a feed, so they are attacker-chosen: a page that
+    says "enrich me" with `http://127.0.0.1:2019/` or a cloud metadata address turns the builder
+    into a probe of whatever else runs on the box. Everything that is not a public unicast address
+    is refused - loopback, private ranges, link-local (169.254.169.254 among them), reserved,
+    multicast.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 0, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, ValueError, OSError):
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        except ValueError:
+            return False
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast or address.is_unspecified):
+            return False
+    return True
+
+
+class _PublicOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """A redirect is a second URL the attacker picks, so it is checked like the first one."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_public_url(newurl):
+            raise urllib.error.URLError(f"refused a redirect to a non-public address: "
+                                        f"{urllib.parse.urlsplit(newurl).hostname or newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+PUBLIC_OPENER = urllib.request.build_opener(_PublicOnlyRedirects())
+
+
+def fetch(url: str, etag: str | None = None, modified: str | None = None,
+          opener: urllib.request.OpenerDirector | None = None) -> tuple[int, bytes, dict]:
     headers = {"User-Agent": UA, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/html;q=0.8, */*;q=0.5"}
     if etag:
         headers["If-None-Match"] = etag
     if modified:
         headers["If-Modified-Since"] = modified
     request = urllib.request.Request(url, headers=headers)
+    open_url = opener.open if opener is not None else urllib.request.urlopen
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        with open_url(request, timeout=TIMEOUT) as response:
             # 9 MB. A podcast feed carries whole episode descriptions and some run to 4.5 MB
             # (measured: The Cognitive Revolution), so the old 4 MB cut them off mid-tag.
             return response.status, response.read(9_000_000), dict(response.headers)
@@ -306,13 +355,27 @@ def attr_anywhere(node: ET.Element, names: tuple[str, ...], attribute: str) -> s
 
 
 def strip_html(raw: str) -> str:
+    """Plain text from a publisher's HTML, with no markup left in it.
+
+    The order matters, and this used to have it backwards: tags were stripped first and the text
+    unescaped afterwards, so an escaped tag arrived as text, survived the strip, and was decoded
+    into live markup on the way out - a feed publishing `&lt;img src=x onerror=...&gt;` put a
+    working event handler into the site. Unescape first, then strip, and repeat until nothing
+    markup-shaped is left: feeds nest escaping arbitrarily deep (``&amp;lt;img ...&amp;gt;``), and
+    NFKC folds full-width brackets into real angle brackets. An unterminated `<img` at the end of a
+    string is removed too - `<[^>]+>` needs a closing bracket and used to let it through.
+    """
     if not raw:
         return ""
-    text = re.sub(r"(?is)<(script|style|figure|nav|footer|header)[^>]*>.*?</\1>", " ", raw)
-    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>", " ", text)
-    text = re.sub(r"(?s)<[^>]+>", " ", text)
-    text = html.unescape(text)
-    text = unicodedata.normalize("NFKC", text)
+    text = raw
+    for _ in range(3):
+        text = unicodedata.normalize("NFKC", deep_unescape(text))
+        text = re.sub(r"(?is)<(script|style|figure|nav|footer|header)[^>]*>.*?</\1>", " ", text)
+        text = re.sub(r"(?i)<br\s*/?>|</p>|</div>", " ", text)
+        text = re.sub(r"(?s)<[^>]+>", " ", text)
+        text = re.sub(r"(?s)<(?=[a-zA-Z/!])[^>]*$", " ", text)
+        if "<" not in text:
+            break
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -1005,9 +1068,15 @@ def episode_extras(url: str, cache: dict, budget: list[int]) -> dict:
     if budget[0] <= 0:
         return {}
     found: dict = {}
+    # The link came from the feed, so it is whatever the publisher typed - including addresses that
+    # only mean something from inside this machine. Ask for public ones only, and follow redirects
+    # through the same check.
+    if not is_public_url(url):
+        log(f"  episode skipped, not a public address: {url[:90]}")
+        return found
     try:
         budget[0] -= 1
-        status, body, _ = fetch_with_retries(url, attempts=2)
+        status, body, _ = fetch_with_retries(url, attempts=2, opener=PUBLIC_OPENER)
         if status < 400:
             page = body.decode("utf-8", "replace")
             chapters = chapters_from_page(page)
@@ -1068,9 +1137,14 @@ def enrich_article(url: str, cache: dict[str, dict], budget: list[int]) -> dict:
     if budget[0] <= 0:
         return {}
     found: dict = {}
+    # Same rule for the article itself: the link is feed-supplied, so only public addresses are read
+    # and a redirect is re-checked before it is followed.
+    if not is_public_url(url):
+        log(f"  enrich skipped, not a public address: {url[:90]}")
+        return found
     try:
         budget[0] -= 1
-        status, body, _ = fetch_with_retries(url, attempts=2)
+        status, body, _ = fetch_with_retries(url, attempts=2, opener=PUBLIC_OPENER)
         if status < 400:
             page = body.decode("utf-8", "replace")
             head = page[:400_000]

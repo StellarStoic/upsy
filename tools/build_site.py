@@ -16,6 +16,7 @@ import html
 import json
 import pathlib
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -195,16 +196,66 @@ def picture_failed(reason: str) -> str:
 ICON_URL = re.compile(r"(?i)favicon|apple-icon|/logo[.\-_]|cropped-favicon")
 
 
+def picture_url_is_public(url: str) -> bool:
+    """A picture URL comes out of a feed, so it is whatever the publisher typed - and this build
+    fetches it. `url.startswith("http")` let a feed choose the target of our own request: loopback,
+    a private range, or a cloud metadata address (169.254.169.254). Allow public unicast only.
+    """
+    import ipaddress
+    import socket
+    import urllib.parse
+
+    try:
+        parts = urllib.parse.urlsplit(url or "")
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 0, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError, ValueError, OSError):
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        except ValueError:
+            return False
+        if (address.is_private or address.is_loopback or address.is_link_local
+                or address.is_reserved or address.is_multicast or address.is_unspecified):
+            return False
+    return bool(infos)
+
+
+def public_only_opener():
+    """urllib follows redirects on its own, so a public URL could still land on 127.0.0.1.
+    Every hop is checked like the first address."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    class _Checked(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            if not picture_url_is_public(newurl):
+                raise urllib.error.URLError("refused a redirect to a non-public address")
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    return urllib.request.build_opener(_Checked())
+
+
 def mirror_picture(url: str) -> str:
     """Fetch one picture, shrink it, and return the path it is served from ("" when it cannot be)."""
     import hashlib
     import shutil
     import urllib.request
 
-    if not url.startswith("http"):
+    if not (url or "").lower().startswith(("http://", "https://")):
         return picture_failed("not a url")
+    # A favicon is refused before the address is resolved: the string already says no, and a lookup
+    # on every icon in the wire is a network call per card for nothing.
     if ICON_URL.search(url):
         return picture_failed("a site icon, not a picture")
+    if not picture_url_is_public(url):
+        return picture_failed("not a public address")
     # The processing recipe is part of the key: a cache written before the pictures were shrunk
     # holds full-size originals, and reusing one would keep serving megabytes.
     # v2: the first pass left animated gifs at their original size, and the key has to change when the
@@ -221,7 +272,7 @@ def mirror_picture(url: str) -> str:
         try:
             request = urllib.request.Request(url, headers={
                 "User-Agent": "upsy.si/1.0 (+https://upsy.si/)", "Referer": "https://upsy.si/"})
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with public_only_opener().open(request, timeout=20) as response:
                 data = response.read(MAX_IMAGE_BYTES + 1)
                 expected = response.headers.get("Content-Length")
                 kind = response.headers.get("Content-Type") or ""
@@ -408,6 +459,27 @@ def editor_note(moments: dict) -> str:
 
 def esc(text: str | None) -> str:
     return html.escape(text or "", quote=True)
+
+
+def safe_href(url: str | None) -> str:
+    """A feed picks its own links, and `javascript:` is a link - only http(s) navigates."""
+    value = (url or "").strip()
+    return esc(value) if value.lower().startswith(("http://", "https://")) else "#"
+
+
+def without_markup(text: str | None) -> str:
+    """The last gate before a title is published.
+
+    fetch.py strips tags when it parses a feed; this runs the same idea once more at build time so a
+    regression there cannot reach the page. Ordinary text survives - "<3" and "5<6" are kept, only
+    something shaped like a tag ("<img", "</p", "<!") is removed.
+    """
+    value = unicodedata.normalize("NFKC", text or "")
+    for _ in range(3):
+        if not re.search(r"(?i)<[a-z/!]", value):
+            break
+        value = re.sub(r"(?s)<[^>]*>?", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def age(stamp: str | None, now: datetime) -> str:
@@ -795,7 +867,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
   <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span><span class="tip" aria-hidden="true"><b>How energy is counted</b>freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>AI terms in headline and summary: up to <em>+15</em><br>picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline <em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further outlet running the same story<br>the bar is score &times; 0.7</span></div>
   <div>
     <div class="src"><a class="who" href="/s/{esc(item['id'])}/">{esc(item['sourceName'])}</a><span>{age(item.get('published'), now)} ago</span>{''.join(tags)}</div>
-    <h2><a href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">{esc(truncate(item['title'], 150))}</a></h2>
+    <h2><a href="{safe_href(item['url'])}" target="_blank" rel="noopener nofollow">{esc(truncate(item['title'], 150))}</a></h2>
     {dek}
     <div class="trace">{trace}</div>
   </div>
@@ -1080,15 +1152,6 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
   let loaded = {INDEX_ROWS};
   const state = {{ breaking: false, upsy: false, image: false, q: '' }};
   function rowFor(item) {{
-    const tags = [];
-    if (item.breaking) tags.push('<span class="tag breaking">breaking</span>');
-    if (item.upsy) tags.push('<span class="tag upsy">anomaly</span>');
-    const image = item.image
-      ? '<img class="thumb" src="' + item.image + '" alt="" loading="lazy" width="112" height="76">'
-      : '<div class="thumb tile" style="--hue:' + item.hue + '" aria-hidden="true"><span>'
-        + item.initials + '</span></div>';
-    const dek = item.summary ? '<p class="dek">' + item.summary.slice(0, 190) + '</p>' : '';
-    const meter = Math.min(100, Math.max(5, item.score * 0.7)).toFixed(0);
     const article = document.createElement('article');
     article.className = 'row';
     article.dataset.upsy = item.upsy ? '1' : '0';
@@ -1096,9 +1159,12 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
     article.dataset.image = item.image ? '1' : '0';
     article.dataset.title = (item.title + ' ' + item.sourceName).toLowerCase();
     article.dataset.src = item.src || '';
+    // The shell is static markup; every value below goes in as text or as a property, never as part
+    // of an HTML string. A title is whatever a publisher wrote - and a string handed to innerHTML is
+    // parsed, so an escaped tag in the data (&#38;lt;img ...&#38;gt;) would come back as a live one.
     article.innerHTML =
-      '<div class="energy"><span class="n">' + Math.round(item.score) + '</span>' +
-      '<span class="lbl">energy</span><span class="meter"><i style="width:' + meter + '%"></i></span>' +
+      '<div class="energy"><span class="n"></span>' +
+      '<span class="lbl">energy</span><span class="meter"><i></i></span>' +
       '<span class="tip" aria-hidden="true"><b>How energy is counted</b>' +
       'freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>' +
       'source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>' +
@@ -1106,12 +1172,52 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
       'picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline ' +
       '<em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further ' +
       'outlet running the same story<br>the bar is score &times; 0.7</span></div>' +
-      '<div><div class="src"><a class="who" href="/s/' + item.id + '/">' + item.sourceName + '</a>' +
-      '<span>' + item.age + '</span>' + tags.join('') + '</div>' +
-      '<h2><a href="' + item.url + '" target="_blank" rel="noopener nofollow">' + item.title + '</a></h2>' +
-      dek + '</div>' + image;
+      '<div><div class="src"><a class="who"></a><span class="age"></span></div>' +
+      '<h2><a target="_blank" rel="noopener nofollow"></a></h2><p class="dek"></p></div>' +
+      '<div class="thumb"></div>';
+    const meter = Math.min(100, Math.max(5, item.score * 0.7)).toFixed(0);
+    article.querySelector('.n').textContent = String(Math.round(item.score));
+    article.querySelector('.meter i').style.width = meter + '%';
+    const who = article.querySelector('.who');
+    who.setAttribute('href', '/s/' + encodeURIComponent(item.id) + '/');
+    who.textContent = item.sourceName;
+    article.querySelector('.age').textContent = item.age;
+    const tags = article.querySelector('.src');
+    if (item.breaking) tags.appendChild(tagFor('breaking', 'breaking'));
+    if (item.upsy) tags.appendChild(tagFor('anomaly', 'upsy'));
+    const link = article.querySelector('h2 a');
+    if (safeHref(item.url)) link.setAttribute('href', item.url);
+    link.textContent = item.title;
+    const dek = article.querySelector('.dek');
+    if (item.summary) dek.textContent = item.summary.slice(0, 190); else dek.remove();
+    const thumb = article.querySelector('.thumb');
+    if (item.image) {{
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      if (/^(\\/|https?:\\/\\/)/i.test(item.image)) img.src = item.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.width = 112;
+      img.height = 76;
+      thumb.replaceWith(img);
+    }} else {{
+      thumb.className = 'thumb tile';
+      thumb.style.setProperty('--hue', String(item.hue));
+      thumb.setAttribute('aria-hidden', 'true');
+      const initials = document.createElement('span');
+      initials.textContent = item.initials;
+      thumb.appendChild(initials);
+    }}
     return article;
   }}
+  function tagFor(label, kind) {{
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + kind;
+    tag.textContent = label;
+    return tag;
+  }}
+  // A feed picks its own links, and "javascript:" is a link.
+  function safeHref(url) {{ return /^https?:\\/\\//i.test((url || '').trim()); }}
   button.addEventListener('click', async function () {{
     button.disabled = true;
     const response = await fetch('/data/news.json?cachebust=' + Date.now());
@@ -1160,7 +1266,7 @@ def render_anomalies(moments: dict, items: list[dict], now: datetime) -> str:
     if not cards:
         for item in [i for i in items if i["upsy"]][:4] or items[:3]:
             cards.append(
-                f'<div class="anomaly"><h4><a href="{esc(item["url"])}" target="_blank" rel="noopener nofollow">{esc(truncate(item["title"], 84))}</a></h4>'
+                f'<div class="anomaly"><h4><a href="{safe_href(item["url"])}" target="_blank" rel="noopener nofollow">{esc(truncate(item["title"], 84))}</a></h4>'
                 f'<p>{esc(truncate(item["summary"] or "Flagged by the stream as an upsy moment.", 150))}</p>'
                 f'<div class="meta">{esc(item["sourceName"])} &middot; {age(item["published"], now)} ago</div></div>'
             )
@@ -1702,7 +1808,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     {player_html(item)}
     {lead}
     <div class="body">{body}</div>
-    <a class="cta" href="{esc(item['url'])}" target="_blank" rel="noopener nofollow">{cta_label} &rarr;</a>
+    <a class="cta" href="{safe_href(item['url'])}" target="_blank" rel="noopener nofollow">{cta_label} &rarr;</a>
     {note}
     <div class="related"><h3>{'more podcasts' if is_episode else 'more from the stream'}</h3>
       {related_html}
@@ -1932,26 +2038,38 @@ def main() -> int:
     # The stream is stories. An episode in "load more" would arrive as a row with no player, so
     # episodes are served beside it in their own file - which is also the file a machine should read
     # when it wants to know what is worth listening to.
+    # Data files carry text as it is, not as HTML. Escaping here and then writing the value into the
+    # page with innerHTML cancelled out: the parser decodes `&lt;img ...&gt;` straight back into a
+    # live tag. Escaping belongs at the one place HTML is actually produced (esc() below), and the
+    # page builds its rows as DOM nodes with textContent.
+    cleaned = 0
+    rows = []
+    for i in stories_of(items):
+        row = {"id": i["id"], "title": without_markup(i["title"]), "url": i["url"],
+               "sourceName": without_markup(i["sourceName"]), "summary": without_markup(truncate(i["summary"], 200)),
+               "image": picture_of(i), "score": i["score"], "breaking": i["breaking"],
+               "src": src_key(i["sourceName"]),
+               # what a card draws when there is no picture: two letters and a hue
+               "initials": without_markup(tile_initials(i["sourceName"])),
+               "hue": tile_hue(i["sourceName"]),
+               "upsy": i["upsy"], "age": age(i["published"], now)}
+        if (row["title"], row["summary"]) != (i["title"], truncate(i["summary"], 200)):
+            cleaned += 1
+        rows.append(row)
+    if cleaned:
+        print(f"removed leftover markup from {cleaned} row(s)")
     (SITE / "data" / "news.json").write_text(
-        json.dumps({"generated": data["generated"], "counts": data["counts"],
-                    "items": [{"id": i["id"], "title": esc(i["title"]), "url": esc(i["url"]),
-                               "sourceName": esc(i["sourceName"]), "summary": esc(truncate(i["summary"], 200)),
-                               "image": esc(picture_of(i)), "score": i["score"], "breaking": i["breaking"],
-                               "src": src_key(i["sourceName"]),
-                               # what a card draws when there is no picture: two letters and a hue
-                               "initials": esc(tile_initials(i["sourceName"])),
-                               "hue": tile_hue(i["sourceName"]),
-                               "upsy": i["upsy"], "age": age(i["published"], now)}
-                              for i in stories_of(items)]},
+        json.dumps({"generated": data["generated"], "counts": data["counts"], "items": rows},
                    ensure_ascii=False), encoding="utf-8")
     (SITE / "data" / "episodes.json").write_text(
         json.dumps({"generated": data["generated"],
-                    "items": [{"id": i["id"], "title": esc(i["title"]), "show": esc(i["sourceName"]),
-                               "page": f"{SITE_URL}/s/{i['id']}/", "url": esc(i["url"]),
-                               "audio": esc(i["audio"]), "audioType": esc(i["audioType"]),
-                               "durationSeconds": i["duration"], "transcript": esc(i["transcript"]),
-                               "transcriptType": esc(i["transcriptType"]), "published": i["published"],
-                               "summary": esc(truncate(i.get("summary") or "", 400))}
+                    "items": [{"id": i["id"], "title": without_markup(i["title"]),
+                               "show": without_markup(i["sourceName"]),
+                               "page": f"{SITE_URL}/s/{i['id']}/", "url": i["url"],
+                               "audio": i["audio"], "audioType": i["audioType"],
+                               "durationSeconds": i["duration"], "transcript": without_markup(i["transcript"]),
+                               "transcriptType": i["transcriptType"], "published": i["published"],
+                               "summary": without_markup(truncate(i.get("summary") or "", 400))}
                               for i in episodes_of(items)]},
                    ensure_ascii=False), encoding="utf-8")
     (SITE / "data" / "meta.json").write_text(
