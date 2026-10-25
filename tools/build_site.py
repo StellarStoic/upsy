@@ -149,7 +149,7 @@ def tile_initials(name: str) -> str:
     return (parts[0][0] + parts[1][0]).upper()
 
 
-def thumb_of(item: dict) -> str:
+def thumb_of(item: dict, width: int = 112, height: int = 76) -> str:
     """The card's picture, or a tile that says who is talking.
 
     A card with an empty box is a hole in the page: a story whose publisher gave no picture and whose
@@ -160,7 +160,7 @@ def thumb_of(item: dict) -> str:
     picture = picture_of(item)
     if picture:
         return (f'<img class="thumb" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" '
-                f'loading="lazy" width="112" height="76">')
+                f'loading="lazy" width="{width}" height="{height}">')
     name = item.get("sourceName") or ""
     return (f'<div class="thumb tile" style="--hue:{tile_hue(name)}" aria-hidden="true">'
             f'<span>{esc(tile_initials(name))}</span></div>')
@@ -443,8 +443,10 @@ CSS = """
   /* The wire had no h1 at all: a page with no h1 has no title a screen reader or a crawler
      can name it by. This keeps the drawn page exactly as designed. */
   /* the listening lane and the player: same palette, nothing new to learn */
-  .listen-row { display:grid; grid-template-columns:18px 1fr; gap:2px 8px; padding:8px 0;
-                border-bottom:1px solid var(--line); text-decoration:none; }
+  .listen-row { display:grid; grid-template-columns:56px 1fr; gap:2px 10px; padding:10px 0;
+                border-bottom:1px solid var(--line); text-decoration:none; align-items:start; }
+  .listen-row .thumb { width:56px; height:56px; grid-row:span 2; border-radius:3px; object-fit:cover; }
+  .listen-row .thumb.tile span { font-size:15px; }
   .listen-row:last-of-type { border-bottom:0; }
   .listen-row .play { grid-row:span 2; color:var(--upsy); font-size:12px; line-height:1.5; }
   .listen-row .lt { color:var(--fg); font-size:13px; line-height:1.35; }
@@ -470,7 +472,11 @@ CSS = """
   button.chapter:hover, button.chapter:focus-visible { color:var(--upsy); border-bottom-color:var(--upsy); }
   .listen-list { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
   .listen-list h1 { font-size:22px; margin:0 0 6px; }
-  .listen-item { border-top:1px solid var(--line); padding:16px 0; }
+  .listen-item { border-top:1px solid var(--line); padding:16px 0;
+                 display:flex; gap:14px; align-items:flex-start; }
+  .listen-item .thumb { width:88px; height:88px; flex:0 0 88px; border-radius:3px; object-fit:cover; }
+  .listen-item .thumb.tile span { font-size:22px; }
+  .listen-item .li-body { min-width:0; flex:1; }
   .listen-item h2 { font-size:16px; margin:6px 0; line-height:1.3; }
   .listen-item h2 a { color:var(--fg); text-decoration:none; }
   .listen-item h2 a:hover { color:var(--link); }
@@ -652,6 +658,12 @@ CSS = """
   /* An episode's artwork is a thumbnail, not a banner: it identifies the show, the words are the page. */
   .story.episode img.lead { width:auto; max-width:300px; max-height:300px; margin:14px auto;
                             display:block; }
+  .story.episode .lead.tile { width:300px; height:300px; margin:14px auto; display:grid;
+                              place-items:center; border:1px solid var(--line); border-radius:3px;
+                              background:linear-gradient(135deg, hsl(var(--hue,210) 32% 15%),
+                                                        hsl(var(--hue,210) 28% 9%)); }
+  .story.episode .lead.tile span { font-family:var(--mono); font-size:64px; font-weight:700;
+                                   letter-spacing:.08em; color:hsl(var(--hue,210) 62% 70%); opacity:.9; }
   .chapters { list-style:none; margin:8px 0 22px; padding:0; display:flex; flex-wrap:wrap;
               gap:6px 10px; justify-content:center; }
   .chapters li { margin:0; }
@@ -980,7 +992,7 @@ def render_listen_lane(episodes: list[dict], now: datetime, limit: int = 3) -> s
         length = duration_label(episode.get("duration"))
         meta_bits = " &middot; ".join(bit for bit in (esc(episode["sourceName"]), esc(length),
                                                       age(episode.get("published"), now) + " ago") if bit)
-        rows.append(f'<a class="listen-row" href="/s/{esc(episode["id"])}/">'
+        rows.append(f'<a class="listen-row" href="/s/{esc(episode["id"])}/">{thumb_of(episode, 56, 56)}'
                     f'<span class="play" aria-hidden="true">&#9654;</span>'
                     f'<span class="lt">{esc(truncate(episode["title"], 78))}</span>'
                     f'<span class="lm">{meta_bits}</span></a>')
@@ -1592,8 +1604,16 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
                     f'<meta property="article:section" content="{esc(item["sourceName"])}">\n'
                     if item.get("published") else ""), css=CSS)
     picture = picture_of(item)
-    lead = (f'<img class="lead" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" width="820">'
-            f'<div class="credit">image: {esc(item["sourceName"])}</div>') if picture else ""
+    if picture:
+        lead = (f'<img class="lead" src="{esc(picture)}" alt="{esc(item.get("imageAlt") or "")}" width="820">'
+                f'<div class="credit">image: {esc(item["sourceName"])}</div>')
+    elif item.get("kind") == "podcast":
+        # An episode with no artwork shows the show's initials where the cover would be, so its page has a
+        # head as well as a headline.
+        lead = (f'<div class="lead tile" style="--hue:{tile_hue(item["sourceName"])}" aria-hidden="true">'
+                f'<span>{esc(tile_initials(item["sourceName"]))}</span></div>')
+    else:
+        lead = ""
     if item.get("kind") == "podcast" and item.get("contentHtml"):
         # An episode keeps the description's own markup: the sponsors are already gone from it, and
         # its links stay clickable with the words the show gave them ("LinkedIn", "Go Exploit
@@ -1716,12 +1736,15 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
               if episode.get("transcript") or episode.get("transcriptText") else [])
         when = age(episode.get("published"), now) + " ago" if episode.get("published") else ""
         rows.append(f'<article class="listen-item" data-id="{esc(episode["id"])}" data-src="{src_key(episode["sourceName"])}">\n'
+                    f'      {thumb_of(episode, 88, 88)}\n'
+                    f'      <div class="li-body">\n'
                     f'      <div class="kicker"><span>{esc(episode["sourceName"])}</span>'
                     f'<span>{esc(when)}</span>' + (f'<span>{esc(length)}</span>' if length else "")
                     + "".join(badges) + '</div>\n'
                     f'      <h2><a href="/s/{esc(episode["id"])}/">{esc(episode["title"])}</a></h2>\n'
                     f'      <p class="dek">{esc(truncate(episode.get("summary") or "", 240))}</p>\n'
                     f'      <a class="listen-play" href="/s/{esc(episode["id"])}/">play on its page</a>\n'
+                    f'      </div>\n'
                     f'    </article>')
     head = BASE_HEAD.format(
         editor=esc(editor_note(moments)),

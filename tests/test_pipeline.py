@@ -1723,3 +1723,35 @@ class NoEmptyCards(unittest.TestCase):
         self.assertIn('"initials": esc(tile_initials(i["sourceName"]))', source)
         self.assertIn('"hue": tile_hue(i["sourceName"])', source)
         self.assertNotIn('class="thumb empty"', source)
+
+    def listen_page(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"kind": "podcast", "audio": "https://cdn.example.com/e.mp3", "duration": 1800})
+        return build_site.build_listen([item], build_site.datetime.now(build_site.timezone.utc), {})
+
+    def test_a_podcast_row_shows_its_artwork_or_a_tile(self):
+        page = self.listen_page()
+        row = re.search(r'<article class="listen-item".*?</article>', page, re.S).group(0)
+        self.assertIn('class="thumb', row)
+        self.assertIn('class="li-body"', row)
+
+    def test_an_episode_with_no_artwork_gets_a_tile_row(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"id": "ep9", "sourceName": "Interconnects", "imageLocal": "", "image": ""})
+        page = build_site.build_listen([item], build_site.datetime.now(build_site.timezone.utc), {})
+        row = re.search(r'<article class="listen-item".*?</article>', page, re.S).group(0)
+        self.assertIn('class="thumb tile"', row)
+        self.assertIn("<span>I</span>", row)
+
+    def test_an_episode_page_with_no_artwork_gets_a_tile_head(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"imageLocal": "", "image": "", "sourceName": "Interconnects"})
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertIn('class="lead tile"', page)
+        self.assertIn("--hue:", page)
+
+    def test_a_story_page_still_has_no_head_when_it_has_no_picture(self):
+        item = dict(StoryPageFurniture.ITEM)
+        item.update({"kind": "news", "audio": "", "duration": 0, "imageLocal": "", "image": ""})
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertNotIn('class="lead', page)
