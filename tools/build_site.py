@@ -340,6 +340,20 @@ CSS = """
   .listen-row:hover .lt { color:var(--link); }
   .listen-row .lm { color:var(--dim); font-size:11px; }
   audio.player { width:100%; margin:14px 0 4px; filter:saturate(.75); }
+  .player-wrap { position:relative; }
+  .player-wrap.is-loading audio.player { opacity:.55; }
+  .player-wrap.is-loading::after { content:""; position:absolute; left:0; right:0; top:0; height:3px;
+    background:linear-gradient(90deg, transparent, var(--upsy), transparent); background-size:50% 100%;
+    background-repeat:no-repeat; animation:player-scan 1.1s linear infinite; }
+  @keyframes player-scan {
+    0% { background-position:-50% 0; }
+    100% { background-position:150% 0; }
+  }
+  .player-state { margin:7px 0 0; font-size:11.5px; color:var(--upsy); letter-spacing:.04em; }
+  .player-state::before { content:"▸ "; }
+  @media (prefers-reduced-motion: reduce) {
+    .player-wrap.is-loading::after { animation:none; background-position:50% 0; opacity:.6; }
+  }
   button.chapter { font:inherit; font-size:inherit; color:var(--cool); background:none; border:0;
     border-bottom:1px dotted currentColor; padding:0 1px; cursor:pointer; }
   button.chapter:hover, button.chapter:focus-visible { color:var(--upsy); border-bottom-color:var(--upsy); }
@@ -1162,19 +1176,50 @@ EPISODE_JS = """<script>
 (function () {
   // Chapters are the show's own index; a timestamp that cannot be pressed is a note to self. Pressing
   // one seeks the player and starts it, and brings the player into view so the reader can see it move.
+  //
+  // The file comes from the show's own host, so there is a gap between the press and the sound: a
+  // player that sits there silently is indistinguishable from one that ignored the press. Every state
+  // the media element reports is written under it, and a scan line runs while it waits.
   const player = document.querySelector('audio.player');
+  const state = document.getElementById('player-state');
+  const wrap = document.getElementById('player-wrap');
   if (!player) return;
+  let timer = null;
+  function say(text) {
+    if (!state) return;
+    state.hidden = !text;
+    state.textContent = text || '';
+    if (wrap) wrap.classList.toggle('is-loading', Boolean(text));
+  }
+  function later(text, delay) {
+    clearTimeout(timer);
+    timer = setTimeout(function () { say(text); }, delay);
+  }
+  player.addEventListener('playing', function () { clearTimeout(timer); say(''); });
+  player.addEventListener('canplay', function () { if (state && !state.hidden) later('', 400); });
+  player.addEventListener('waiting', function () { say('buffering\u2026'); });
+  player.addEventListener('stalled', function () { say('buffering\u2026'); });
+  player.addEventListener('error', function () {
+    say('the show\u2019s host would not start the file \u2014 press play to try again');
+  });
   for (const mark of document.querySelectorAll('button.chapter[data-at]')) {
     mark.addEventListener('click', function () {
       const at = Number(mark.dataset.at);
       if (!isFinite(at) || at < 0) return;
       if (isFinite(player.duration) && player.duration > 0 && at > player.duration) return;
-      try { player.currentTime = at; } catch (error) { return; }
+      say('loading from ' + mark.textContent.trim() + '\u2026');
+      later('still loading \u2014 the file comes from the show\u2019s own host', 15000);
+      try { player.currentTime = at; } catch (error) { say('this browser would not seek'); return; }
       const started = player.play();
-      if (started && started.catch) started.catch(function () {});
+      if (started && started.catch) {
+        started.catch(function () { say('press play to start \u2014 this browser wanted a gesture'); });
+      }
       player.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
   }
+  player.addEventListener('play', function () {
+    if (player.readyState < 3) say('loading\u2026');
+  });
 })();
 </script>"""
 
@@ -1219,7 +1264,11 @@ def player_html(item: dict) -> str:
         credits.append(esc(length))
     if item.get("transcript"):
         credits.append(f'<a href="{esc(item["transcript"])}" rel="noopener">the show&#39;s own transcript</a>')
-    return (f'<audio class="player" controls preload="none" src="{esc(item["audio"])}"></audio>\n'
+    # A file that arrives from the show's own host takes a moment, and a frozen player reads as a
+    # broken one. The wrap holds a line the script can talk through, and a scan line while it waits.
+    return (f'<div class="player-wrap" id="player-wrap">'
+            f'<audio class="player" controls preload="none" src="{esc(item["audio"])}"></audio>'
+            f'<p class="player-state" id="player-state" aria-live="polite" hidden></p></div>\n'
             f'    <div class="credit">{" &middot; ".join(credits)}</div>')
 
 

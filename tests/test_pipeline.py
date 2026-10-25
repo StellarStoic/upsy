@@ -1120,3 +1120,47 @@ class ChaptersPlay(unittest.TestCase):
         fields = fetcher.episode_fields({"kind": "podcast"}, raw)
         self.assertEqual(fields["kind"], "podcast")
         self.assertEqual(fields["duration"], 600)
+
+
+class PlayerFeedback(unittest.TestCase):
+    """The gap between pressing a chapter and hearing anything has to be visible."""
+
+    ITEM = dict(StoryPageFurniture.ITEM)
+
+    def page(self):
+        return build_site.build_story(self.ITEM, [], build_site.datetime.now(build_site.timezone.utc), {})
+
+    def test_the_player_carries_a_line_it_can_talk_through(self):
+        page = self.page()
+        self.assertIn('id="player-state"', page)
+        self.assertIn('aria-live="polite"', page)
+        self.assertIn('class="player-wrap" id="player-wrap"', page)
+
+    def test_pressing_a_chapter_says_it_is_loading_and_says_from_where(self):
+        page = self.page()
+        self.assertIn("loading from ", page)
+        self.assertIn("still loading", page)          # after 15s, name the reason
+        self.assertIn("player.currentTime = at", page)
+
+    def test_buffering_and_failure_each_say_their_own_thing(self):
+        page = self.page()
+        self.assertIn("addEventListener('waiting'", page)
+        self.assertIn("addEventListener('error'", page)
+        self.assertIn("would not start the file", page)
+
+    def test_the_waiting_state_is_cleared_when_sound_starts(self):
+        page = self.page()
+        playing = page.split("addEventListener('playing'")[1].split("});")[0]
+        self.assertIn("say('')", playing)
+
+    def test_there_is_something_moving_while_it_waits(self):
+        self.assertIn(".player-wrap.is-loading::after", build_site.CSS)
+        self.assertIn("@keyframes player-scan", build_site.CSS)
+        self.assertIn(".player-wrap.is-loading audio.player { opacity", build_site.CSS)
+        # and it stops for a reader who asked motion to stop
+        self.assertIn("@media (prefers-reduced-motion: reduce)", build_site.CSS)
+
+    def test_a_story_page_gets_none_of_it(self):
+        item = dict(self.ITEM, kind="news", audio="", duration=0)
+        page = build_site.build_story(item, [], build_site.datetime.now(build_site.timezone.utc), {})
+        self.assertNotIn('id="player-state"', page)
