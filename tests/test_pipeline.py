@@ -1720,7 +1720,7 @@ class NoEmptyCards(unittest.TestCase):
 
     def test_the_loader_carries_the_tile_for_rows_it_adds(self):
         source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
-        self.assertIn('"initials": esc(tile_initials(i["sourceName"]))', source)
+        self.assertIn('"initials": without_markup(tile_initials(i["sourceName"]))', source)
         self.assertIn('"hue": tile_hue(i["sourceName"])', source)
         self.assertNotIn('class="thumb empty"', source)
 
@@ -1774,3 +1774,140 @@ class NoEmptyCards(unittest.TestCase):
         self.assertIn(".listen-row { grid-template-columns:1fr; }", mobile)
         # an episode's own page keeps its cover, smaller
         self.assertIn(".story.episode .lead.tile { width:180px; height:180px; }", mobile)
+
+
+class HostileFeedText(unittest.TestCase):
+    """Text from a feed is written by someone else, and every layer used to pass it on as markup.
+
+    The chain this covers: a publisher puts `&lt;img src=x onerror=...&gt;` in a title, `strip_html`
+    stripped tags before it unescaped entities so the tag came back alive, the value went into
+    data/news.json, and the card loader interpolated it into `innerHTML` - where the parser runs it.
+    Reddit and Hacker News headlines reach this pipeline, so "a publisher" means anyone.
+    """
+
+    PAYLOADS = (
+        "&lt;img src=x onerror=alert(1)&gt;",
+        "&amp;lt;img src=x onerror=alert(1)&amp;gt;",          # escaped twice by the feed
+        "\uff1cimg src=x onerror=alert(1)\uff1e",              # full-width brackets, folded by NFKC
+        "still a tag <img src=x onerror=alert(1)",            # no closing bracket at all
+        "&lt;script&gt;alert(document.domain)&lt;/script&gt;",
+        "&lt;svg/onload=alert(1)&gt;",
+    )
+
+    def test_no_tag_survives_stripping(self):
+        for raw in self.PAYLOADS:
+            with self.subTest(raw=raw):
+                text = fetcher.strip_html(raw)
+                self.assertNotIn("<", text)
+                self.assertRegex(text.lower(), r"^(?:(?!onerror|onload|script).)*$")
+
+    def test_ordinary_words_are_left_alone(self):
+        self.assertEqual(fetcher.strip_html("Intel&#8217;s chip &amp; you"), "Intel\u2019s chip & you")
+        self.assertEqual(fetcher.strip_html("Growth <3% this quarter"), "Growth <3% this quarter")
+        self.assertEqual(fetcher.strip_html("A <b>bold</b> claim"), "A bold claim")
+
+    def test_the_build_gate_keeps_plain_text_and_drops_the_rest(self):
+        self.assertEqual(build_site.without_markup("Nothing to see"), "Nothing to see")
+        self.assertEqual(build_site.without_markup("5<6 and 3>2"), "5<6 and 3>2")
+        self.assertEqual(build_site.without_markup("<img src=x onerror=alert(1)>hi"), "hi")
+        self.assertEqual(build_site.without_markup("\uff1cimg src=x onerror=alert(1)\uff1e"), "")
+
+    def test_a_link_has_to_be_a_link(self):
+        self.assertEqual(build_site.safe_href("javascript:alert(1)"), "#")
+        self.assertEqual(build_site.safe_href("JavaScript:alert(1)"), "#")
+        self.assertEqual(build_site.safe_href("data:text/html,<script>alert(1)</script>"), "#")
+        self.assertEqual(build_site.safe_href("https://example.com/a?b=1&c=2"),
+                         "https://example.com/a?b=1&amp;c=2")
+
+    def test_a_feed_link_to_the_machine_itself_is_refused(self):
+        for url in ("http://127.0.0.1:2019/config/", "http://localhost/x", "http://[::1]/",
+                    "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/",
+                    "http://192.168.1.1/", "http://0.0.0.0/", "file:///etc/passwd", "not-a-url"):
+            with self.subTest(url=url):
+                self.assertFalse(fetcher.is_public_url(url))
+                self.assertFalse(build_site.picture_url_is_public(url))
+        # a public address is still fetched, and no DNS lookup is needed to say so
+        self.assertTrue(fetcher.is_public_url("https://93.184.216.34/story"))
+        self.assertTrue(build_site.picture_url_is_public("https://93.184.216.34/story.jpg"))
+
+    def test_the_data_file_carries_text_not_html(self):
+        source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
+        self.assertIn('"title": without_markup(i["title"])', source)
+        # escaping a value that the page later parses as HTML is what undid the escaping
+        self.assertNotIn('"title": esc(i["title"])', source)
+        self.assertIn("article.querySelector('h2 a')", source)
+        self.assertIn("link.textContent = item.title", source)
+        self.assertNotIn("+ item.title +", source)
+
+
+class PublishedPage(unittest.TestCase):
+    """The page a reader gets, built from a feed that is trying to get a tag onto it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(cls.tmp.name)
+        (root / "data").mkdir()
+        hostile = {
+            "id": "evil1", "title": "<img src=x onerror=alert(1)>AI is here",
+            "url": "javascript:alert(document.domain)", "source": "example", "sourceName": "<b>Feed</b>",
+            "sourceUrl": "https://example.com/feed", "sourceCategory": "media", "tier": 2,
+            "published": "2026-10-11T09:00:00+00:00", "summary": "<script>alert(1)</script>It happened.",
+            "content": "", "contentFrom": "", "image": "https://127.0.0.1/secret.png",
+            "author": "A", "score": 90.0, "breaking": False, "upsy": False, "upsyWhy": "",
+            "siTerms": [], "promo": False, "question": False, "tags": [],
+        }
+        clean = {**hostile, "id": "clean1", "title": "A quiet week for chips",
+                 "url": "https://example.com/quiet", "sourceName": "Example AI",
+                 "summary": "Nothing much happened.", "image": ""}
+        news = {"generated": "2026-10-11T10:00:00+00:00",
+                "counts": {"items": 2, "sources": 1, "breaking": 0, "upsy": 0, "withImage": 1,
+                           "withFullText": 0, "new": 2, "promo": 0},
+                "items": [hostile, clean]}
+        (root / "data" / "news.json").write_text(json.dumps(news), encoding="utf-8")
+        (root / "data" / "meta.json").write_text(json.dumps({
+            "generated": news["generated"], "counts": news["counts"],
+            "health": [{"id": "example", "name": "Example AI", "status": "ok 200", "items": 2,
+                        "new": 2, "newest": hostile["published"]}]}), encoding="utf-8")
+        (root / "data" / "moments.json").write_text(json.dumps({
+            "engine": "test", "brief": "A brief.", "generated": news["generated"], "topIds": [],
+            "moments": []}), encoding="utf-8")
+        (root / "sources.json").write_text((ROOT / "sources.json").read_text(encoding="utf-8"),
+                                          encoding="utf-8")
+
+        cls._site, cls._data, cls._root = build_site.SITE, build_site.DATA, build_site.ROOT
+        cls._cache = build_site.CACHE_IMAGES
+        build_site.SITE, build_site.DATA, build_site.ROOT = root / "_site", root / "data", root
+        build_site.CACHE_IMAGES = False            # never reach the network
+        build_site.PICTURE_REASONS.clear()
+        build_site.main()
+        cls.site = root / "_site"
+
+    @classmethod
+    def tearDownClass(cls):
+        build_site.SITE, build_site.DATA, build_site.ROOT = cls._site, cls._data, cls._root
+        build_site.CACHE_IMAGES = cls._cache
+        cls.tmp.cleanup()
+
+    def test_the_data_file_has_no_tag_in_it(self):
+        items = json.loads((self.site / "data" / "news.json").read_text(encoding="utf-8"))["items"]
+        hostile = next(i for i in items if i["id"] == "evil1")
+        self.assertNotIn("<", hostile["title"])
+        self.assertNotIn("<", hostile["summary"])
+        self.assertNotIn("<", hostile["sourceName"])
+        self.assertNotIn("&lt;", hostile["title"])
+        self.assertNotIn("&lt;", hostile["summary"])
+        self.assertIn("AI is here", hostile["title"])
+
+    def test_a_feed_link_cannot_be_a_script(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("javascript:alert", page)
+        self.assertIn('href="#"', page)
+
+    def test_a_feed_cannot_ask_the_build_to_fetch_the_machine(self):
+        # The picture step never opens an address it has not cleared first, and the clearing is a
+        # resolve-and-check rather than a look at the string a feed wrote.
+        source = pathlib.Path("tools/build_site.py").read_text(encoding="utf-8")
+        self.assertIn("public_only_opener().open(request", source)
+        self.assertIn("if not picture_url_is_public(url):", source)
+        self.assertFalse(build_site.picture_url_is_public("https://127.0.0.1/secret.png"))
