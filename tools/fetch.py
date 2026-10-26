@@ -106,6 +106,55 @@ def passes_source_filter(source: dict, raw: dict) -> bool:
     return not (source.get("require") or []) or bool(source_topic_hits(source, raw))
 
 
+# The one list a general show is gated against. Shows whose headlines are the topic (an AI podcast)
+# need no gate at all; shows about something else need their episodes narrowed to the ones that name
+# the topic in the headline, because their descriptions mention AI constantly.
+#
+# It lives here rather than repeated in sources.json (where seven shows carried the same forty-three
+# terms, and a new one had to paste them again): a source writes `"require_title": "general"` and gets
+# this list, and extending the vocabulary is one edit that reaches every gated show.
+GENERAL_TERMS = [
+    # The thing itself, in the spellings a headline actually uses — "A.I." with its periods was missing,
+    # which scored "Anthropic's Quest to Give A.I. Morals" and "The A.I. Revolt Is Here" as off-topic.
+    "ai", "a.i.", "agi", "a.g.i.", "artificial intelligence", "artificial general intelligence",
+    "general intelligence", "superintelligence", "super intelligence", "machine intelligence",
+    # Methods.
+    "machine learning", "deep learning", "neural net*", "transformer*", "diffusion model*",
+    "reinforcement learning", "rlhf", "fine-tun*", "interpretability", "mechanistic interpretability",
+    "alignment", "hallucinat*", "multimodal", "inference", "benchmark*", "dataset*",
+    # Models and the vocabulary around them.
+    "generative ai", "gen ai", "genai", "large language model*", "language model*", "llm*",
+    "foundation model*", "frontier model*", "frontier lab*", "open model*", "small language model*",
+    "chatbot*", "copilot",
+    # Agents and robots: the part of the field a wire about superintelligence is watching hardest.
+    "agentic ai", "agentic workflow*", "agentic", "multi-agent", "autonomous agent*",
+    "autonomous system*", "agent*", "robot*", "humanoid*", "automation", "algorithm*", "data center*",
+    # The organisations: a headline naming OpenAI or Anthropic is about this wire even when it never says
+    # "AI". Only the ones a headline actually uses as shorthand — a mention of Nvidia is usually chips.
+    "openai", "anthropic", "deepmind", "hugging face", "huggingface", "mistral", "cohere", "perplexity",
+    "xai", "stability ai", "qwen", "deepseek", "moonshot", "zhipu", "baidu", "alibaba qwen",
+    # Products.
+    "gpt*", "chatgpt", "claude", "gemini", "llama*", "grok", "groq", "sora", "midjourney",
+    "stable diffusion", "dall-e", "veo", "runway",
+    # Research plumbing.
+    "arxiv", "survey", "paper", "paper*", "preprint*", "technical report", "sota",
+]
+
+
+def _terms(value) -> list[str]:
+    """A source's terms, with the shared list spelled out for the word "general"."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        return GENERAL_TERMS if value == "general" else [value]
+    return list(value)
+
+
+def require_title_terms(source: dict) -> list[str]:
+    """A source's headline gate."""
+    return _terms(source.get("require_title"))
+
+
 def title_hits(source: dict, raw: dict) -> list[str]:
     """Which of a source's `require_title` terms the item's *headline* matches.
 
@@ -113,7 +162,7 @@ def title_hits(source: dict, raw: dict) -> list[str]:
     it"), so a description gate would let the whole feed through. A headline that names it is the
     honest signal: the episode is about the thing, not adjacent to it.
     """
-    require = source.get("require_title") or []
+    require = require_title_terms(source)
     if not require:
         return []
     return matches(require, raw.get("title") or "")
@@ -127,7 +176,7 @@ def source_topic_hits(source: dict, raw: dict) -> list[str]:
     field keeps everything, so adding the field is the only change a narrow feed needs. The opening is
     bounded by FILTER_CHARS because a passing mention deep inside a long essay should not qualify it.
     """
-    require = source.get("require") or []
+    require = _terms(source.get("require"))
     if not require:
         return []
     haystack = f"{raw.get('title') or ''} {raw.get('summary') or ''} {(raw.get('content') or '')[:FILTER_CHARS]}"
@@ -181,6 +230,13 @@ SI_TERMS = (
     # How they are put to work.
     "agentic", "agentic ai", "agentic workflow", "ai agent", "autonomous agent", "multi-agent",
     "tool use", "function calling", "retrieval-augmented", "reasoning model", "chain of thought",
+    # Who is doing it, and what they ship. A headline naming OpenAI or Claude is a story on this wire
+    # even when it says nothing else — and none of these were in the list, so the most concrete AI news
+    # arriving on the wire scored zero energy while an essay that said "transformer" scored five.
+    "openai", "anthropic", "deepmind", "hugging face", "mistral", "cohere", "perplexity", "xai",
+    "deepseek", "qwen", "moonshot", "stability ai", "character.ai",
+    "gpt*", "chatgpt", "claude", "gemini", "llama*", "grok", "groq", "sora", "midjourney", "dall-e",
+    "copilot", "veo",
     # How they fail, which is where the news is.
     "hallucinat*", "prompt injection", "jailbreak", "benchmark",
     # The argument around them.
@@ -1394,7 +1450,9 @@ def run(args: argparse.Namespace) -> int:
             if not raw["link"] or not raw["title"]:
                 continue
             ai_terms = source_topic_hits(source, raw)
-            if require and not ai_terms:
+            # One gate, one definition: `passes_source_filter` is what the tests exercise, so it is what
+            # the pipeline calls rather than an inline copy of it that could drift.
+            if require and not passes_source_filter(source, raw):
                 filtered += 1
                 continue
             if source.get("require_title"):

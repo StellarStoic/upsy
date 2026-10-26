@@ -1331,6 +1331,43 @@ class EpisodeAdmission(unittest.TestCase):
         # and another show with the same feed is still refused
         self.assertTrue(fetcher.episode_is_thin({"kind": "podcast"}, short))
 
+    def test_the_shared_title_gate_is_one_list_and_a_name_points_at_it(self):
+        # Seven shows carried the same forty-three terms pasted into sources.json, so adding a show meant
+        # pasting them again and extending the vocabulary meant seven edits. A source now says "general".
+        self.assertIn("agentic ai", fetcher.GENERAL_TERMS)
+        self.assertIn("superintelligence", fetcher.GENERAL_TERMS)
+        # "grok" was listed and "groq" — a different company — was not, so a piece about the AI chipmaker
+        # was invisible to every gate in the file.
+        self.assertIn("groq", fetcher.GENERAL_TERMS)
+        self.assertEqual(fetcher.require_title_terms({"require_title": "general"}),
+                         fetcher.GENERAL_TERMS)
+        self.assertTrue(fetcher.source_topic_hits({"require": "general"},
+                                                  {"title": "Riding solo", "summary": "A talk about agents."}))
+        self.assertFalse(fetcher.source_topic_hits({"require": "general"},
+                                                   {"title": "Riding solo", "summary": "A trip to Chile."}))
+        self.assertEqual(fetcher.require_title_terms({"require_title": ["ai"]}), ["ai"])
+        self.assertEqual(fetcher.require_title_terms({}), [])
+        # The two forms behave identically through the matcher.
+        self.assertTrue(fetcher.title_hits({"require_title": "general"}, {"title": "Why LLMs plateau"}))
+        self.assertFalse(fetcher.title_hits({"require_title": "general"}, {"title": "The price of copper"}))
+
+    def test_a_show_that_also_covers_war_is_narrowed_to_what_names_the_topic(self):
+        # ChinaTalk publishes WarTalk (Ukraine, Starlink, procurement), which is real journalism and not
+        # this wire. It arrived ungated because the show was assumed to be about AI; the headline is what
+        # an episode is about, so the episode below is refused while an AI episode of the same show stays.
+        sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        chinatalk = next(s for s in sources if s["id"] == "chinatalk-podcast")
+        self.assertEqual(chinatalk["require_title"], "general")
+        gate = {"require_title": chinatalk["require_title"]}
+        self.assertFalse(fetcher.title_hits(
+            gate, {"title": "WarTalk: Kofman on Starlink + What Ukraine Can Teach the U.S. Military"}))
+        self.assertTrue(fetcher.title_hits(gate, {"title": "Inside China's AI chip strategy"}))
+        self.assertTrue(fetcher.title_hits(gate, {"title": "What agentic coding does to software"}))
+        # and nothing below the general shelf lost its own gate
+        for source in sources:
+            if isinstance(source.get("require_title"), str):
+                self.assertEqual(source["require_title"], "general", source["id"])
+
     def test_the_general_shows_are_title_gated_and_only_two_are_throttled(self):
         sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
         gated = {s["id"] for s in sources if s.get("require_title")}
