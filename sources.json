@@ -1164,6 +1164,17 @@
    "tier": 2,
    "homepage": "https://transformer-circuits.pub/",
    "probe": "56 items, newest 2026-08-21 on 2026-10-21"
+  },
+  {
+   "id": "engadget",
+   "name": "Engadget",
+   "url": "https://www.engadget.com/feed/",
+   "category": "press",
+   "tier": 3,
+   "homepage": "https://www.engadget.com/",
+   "require": "general",
+   "probe": "20 items, newest 2026-10-31 on 2026-10-31",
+   "note": "D asked for it 2026-10-31. The feed is a commerce/how-to firehose (Roku sticks, USB cables, PS5 drawbacks) and there is no topic feed to prefer: /rss.xml serves the same general feed, and /tag/ai/feed/, /tag/artificial-intelligence/feed/ and /ai/feed/ all answer 200 with the site's HTML shell rather than XML. Gated on require=general, which kept 1 of 20 items on the day it was added."
   }
  ]
 }
