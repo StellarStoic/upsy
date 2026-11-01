@@ -618,7 +618,9 @@ CSS = """
                         font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; }
   nav.cats a { color:var(--dim); }
   nav.cats a:hover, nav.cats a:focus-visible { color:var(--fg); }
-  nav.cats a[aria-current="page"] { color:var(--sec, var(--upsy)); }
+  /* On the homepage there is no section accent, so the marker takes the brand's own cyan rather
+     than a category colour it does not belong to. */
+  nav.cats a[aria-current="page"] { color:var(--sec, var(--cool)); }
   .status { margin-left:auto; display:flex; gap:16px; align-items:center; font-size:11px; color:var(--dim); flex-wrap:wrap; }
   .status b { font-weight:400; color:var(--upsy); }
   .status .hot { color:var(--hot); }
