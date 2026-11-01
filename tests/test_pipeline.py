@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import unittest
 import xml.etree.ElementTree as ET
+from datetime import timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
@@ -622,10 +623,37 @@ class SiteBuild(unittest.TestCase):
         drawer = page[page.index('<aside class="net-drawer"'):page.index("</aside>", page.index('<aside class="net-drawer"'))]
         self.assertIn('id="net"', drawer)
         self.assertIn('class="net-item"', drawer)
-        column = page[page.index("<aside>"):page.index("</aside>", page.index("<aside>"))]
+        column = page[page.index("<aside>", page.index("</header>")):page.index("</aside>", page.index("<aside>", page.index("</header>")))]
         self.assertNotIn('id="net"', column, "the source list is no longer the right column's")
-        self.assertIn("upsy moments", column)
         self.assertIn("what this is", column)
+        # The moments rail is gone: "breaking" and "anomaly" were removed, so the column must not
+        # advertise an editor's picks it no longer has.
+        self.assertNotIn("upsy moments", column)
+
+    def test_a_story_is_labelled_by_the_clock_only(self):
+        page = (self.site / "index.html").read_text(encoding="utf-8")
+        # Two labels, from the clock, and nothing editorial: a story under eight hours is fresh, one
+        # under a day is new. "breaking" and "anomaly" are gone from the page entirely.
+        self.assertIn('id="f-fresh"', page)
+        self.assertIn('id="f-new"', page)
+        self.assertNotIn('id="f-breaking"', page)
+        self.assertNotIn('id="f-upsy"', page)
+        self.assertNotIn("anomal", page.lower())
+        self.assertNotIn("breaking", page.lower())
+        self.assertIn('data-fresh="', page)
+        self.assertIn('data-new="', page)
+        self.assertIn("fresh · 8h", page)
+        self.assertIn("new · 24h", page)
+
+    def test_freshness_is_eight_and_twenty_four_hours(self):
+        now = build_site.datetime(2026, 11, 1, 12, 0, tzinfo=build_site.timezone.utc)
+        def stamp(hours):
+            return (now - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+        cases = {0: "fresh", 7.9: "fresh", 8.1: "new", 23.9: "new", 24.5: "", 100: ""}
+        for hours, want in cases.items():
+            self.assertEqual(build_site.freshness({"published": stamp(hours)}, now), want, f"{hours}h")
+        self.assertEqual(build_site.freshness({"published": ""}, now), "")
+        self.assertEqual(build_site.freshness({}, now), "")
 
     def test_the_moved_list_still_filters_the_stream(self):
         page = (self.site / "index.html").read_text(encoding="utf-8")

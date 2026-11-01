@@ -331,20 +331,6 @@ def mirror_picture(url: str) -> str:
     return f"/img/{stored.name}"
 
 
-def cache_moment_images(moments: dict) -> int:
-    """The sidebar's moments carry pictures too, and those were still hotlinked originals."""
-    if not CACHE_IMAGES:
-        return 0
-    mirrored = 0
-    for moment in moments.get("moments") or []:
-        if moment.get("image") and moment["image"].startswith("http"):
-            local = mirror_picture(moment["image"])
-            if local:
-                moment["imageLocal"] = local
-                mirrored += 1
-    return mirrored
-
-
 def cache_images(items: list[dict], limit: int = 400) -> int:
     """Keep a copy of each story's picture inside the site.
 
@@ -481,13 +467,6 @@ def attach_shots(items: list[dict], limit: int, site: pathlib.Path, shots: pathl
         item["imageLocal"] = f"/img/{found.name}"
         attached += 1
     return attached
-
-
-def editor_note(moments: dict) -> str:
-    """Who wrote the rail, readable from the published page without any log access."""
-    engine = moments.get("engine") or "rules"
-    error = moments.get("editorError")
-    return f"{engine}" + (f" (unavailable: {error})" if error else "")
 
 
 def esc(text: str | None) -> str:
@@ -684,7 +663,7 @@ CSS = """
   /* `.row` sets display:grid, which outranks the browser's own [hidden] { display:none } - so a
      filtered-out row stayed on screen while the property said otherwise. Both forms are declared. */
   .row[hidden], .row.is-hidden { display:none; }
-  .row.is-new { box-shadow:inset 3px 0 0 var(--cool); }
+  .row.is-fresh { box-shadow:inset 3px 0 0 var(--upsy); }
   .energy { display:flex; flex-direction:column; gap:3px; position:relative; cursor:help; }
   .energy .n { font-size:17px; }
   .energy .lbl { font-size:9px; letter-spacing:.12em; color:var(--dim2); text-transform:uppercase; }
@@ -705,9 +684,8 @@ CSS = """
   .src { font-size:11px; color:var(--dim); margin-bottom:4px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .src .who { color:var(--cool); }
   .tag { font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; border:1px solid currentColor; padding:0 4px; }
-  .tag.breaking { color:var(--hot); }
-  .tag.upsy { color:var(--upsy); }
-  .tag.new { color:var(--cool); }
+  .tag.fresh { color:var(--upsy); }
+  .tag.new { color:var(--dim); }
   .tag.q { color:var(--dim2); }
   .dek { font-size:12.5px; color:var(--dim); margin-top:5px; max-width:82ch; }
   .trace { font-size:11px; color:var(--dim2); margin-top:5px; }
@@ -717,10 +695,6 @@ CSS = """
   aside { padding:14px 16px; }
   aside h3 { font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--dim); margin:0 0 10px; }
   aside section + section { margin-top:20px; border-top:1px solid var(--line); padding-top:16px; }
-  .anomaly { border:1px solid #26330f; background:#0f1408; padding:10px 11px; margin-bottom:9px; }
-  .anomaly h4 { font-size:13.5px; font-weight:500; margin:0; color:var(--upsy); }
-  .anomaly p { font-size:11.5px; color:#9fb383; margin:5px 0 0; }
-  .anomaly .meta { color:#6d7d58; font-size:10.5px; margin-top:6px; }
   .brief { font-size:12.5px; color:#a9b6a0; border-left:2px solid var(--upsy); padding-left:10px; }
   .net div { display:flex; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--dim); border-bottom:1px dotted var(--line); padding:3px 0; }
   .net div:hover { color:var(--fg); }
@@ -855,8 +829,8 @@ HEADER = """<header class="top"{sec_style}>
   <a class="brand" href="/">up<b>sy</b></a>
   <div class="status">
     <span><i class="dot"></i>watching {sources} sources</span>
-    <span class="hot">{breaking} breaking</span>
-    <span><b>{upsy}</b> anomalies</span>
+    <span class="hot">{fresh} fresh</span>
+    <span><b>{new}</b> new</span>
     <span>updated {updated}</span>
     <span><a href="/listen.html">Podcasts</a></span>
     <span><a href="/sources.html">sources</a></span>
@@ -892,14 +866,43 @@ def src_key(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
 
 
-def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
+FRESH_HOURS = 8
+NEW_HOURS = 24
+
+
+def published_at(item: dict):
+    stamp = item.get("published")
+    if not stamp:
+        return None
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def freshness(item: dict, now: datetime) -> str:
+    """The one time label a story carries.
+
+    Two plain facts, no editorial claim: "fresh" if it landed in the last eight hours, "new" if it
+    landed in the last day, nothing older than that. A story gets the tighter label it earns, never
+    both, and nothing here needs explaining to a reader.
+    """
+    when = published_at(item)
+    if when is None:
+        return ""
+    hours = (now - when).total_seconds() / 3600
+    if hours <= FRESH_HOURS:
+        return "fresh"
+    if hours <= NEW_HOURS:
+        return "new"
+    return ""
+
+
+def chip_row(item: dict, now: datetime) -> str:
     tags = []
-    if item["breaking"]:
-        tags.append('<span class="tag breaking">breaking</span>')
-    if item["upsy"]:
-        tags.append('<span class="tag upsy">anomaly</span>')
-    if item["id"] in new_ids:
-        tags.append('<span class="tag new">new</span>')
+    label = freshness(item, now)
+    if label:
+        tags.append(f'<span class="tag {label}">{label}</span>')
     if item.get("promo"):
         tags.append('<span class="tag q">promo</span>')
     picture = picture_of(item)
@@ -907,7 +910,7 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
     trace = " ".join(f"<i>{esc(t)}</i>" for t in ((item.get("aiTerms") or [])[:2] + (item.get("siTerms") or [])[:3]))
     dek = f'<p class="dek">{esc(truncate(item["summary"], 190))}</p>' if item.get("summary") else ""
     meter = min(100.0, max(5.0, float(item["score"]) * 0.7))
-    return f"""<article class="row{' is-new' if item['id'] in new_ids else ''}" data-id="{esc(item['id'])}" data-upsy="{int(item['upsy'])}" data-breaking="{int(item['breaking'])}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
+    return f"""<article class="row{' is-fresh' if label == 'fresh' else ''}" data-id="{esc(item['id'])}" data-fresh="{int(label == 'fresh')}" data-new="{int(bool(label))}" data-image="{int(bool(item.get('image')))}" data-src="{src_key(item['sourceName'])}" data-title="{esc((item['title'] + ' ' + item['sourceName']).lower())}">
   <div class="energy"><span class="n">{item['score']:.0f}</span><span class="lbl">energy</span><span class="meter"><i style="width:{meter:.0f}%"></i></span><span class="tip" aria-hidden="true"><b>How energy is counted</b>freshness: <em>100 &times; 0.5 ^ (age / 26 h)</em> &mdash; halves every 26 hours<br>source tier: <em>42</em> lab &middot; <em>22</em> press &middot; <em>8</em> community<br>AI terms in headline and summary: up to <em>+15</em><br>picture <em>+6</em> &middot; aggregator <em>&minus;12</em> &middot; question headline <em>&minus;18</em> &middot; promotion <em>&minus;30</em> &middot; <em>+7</em> per further outlet running the same story<br>the bar is score &times; 0.7</span></div>
   <div>
     <div class="src"><a class="who" href="/s/{esc(item['id'])}/">{esc(item['sourceName'])}</a><span>{age(item.get('published'), now)} ago</span>{''.join(tags)}</div>
@@ -921,8 +924,8 @@ def chip_row(item: dict, now: datetime, new_ids: set[str]) -> str:
 
 FILTER_BAR = """<div class="bar">
   <span id="count"></span>
-  <button id="f-breaking" aria-pressed="false">breaking</button>
-  <button id="f-upsy" aria-pressed="false">anomalies</button>
+  <button id="f-fresh" aria-pressed="false">fresh · 8h</button>
+  <button id="f-new" aria-pressed="false">new · 24h</button>
   <button id="f-image" aria-pressed="false">with image</button>
   <input id="q" type="search" placeholder="filter titles and sources" aria-label="filter titles and sources">
   <span class="spacer"></span>
@@ -953,7 +956,7 @@ SIGNAL_JS = """<script>
   // filters, and the counter counts them. There were two snapshots, so neither saw the other's rows.
   const rows = document.getElementsByClassName('row');
   const count = document.getElementById('count');
-  const state = { breaking: false, upsy: false, image: false, q: '', sources: new Set() };
+  const state = { fresh: false, new: false, image: false, q: '', sources: new Set() };
   // One click shows that source alone, a second click drops it; with nothing
   // selected every feed is shown, which is where the page starts.
   for (const button of document.querySelectorAll('#net .net-item')) {
@@ -1014,8 +1017,8 @@ SIGNAL_JS = """<script>
     if (window.upsyLoadAll) window.upsyLoadAll().then(apply);
   });
   function matches(row) {
-    if (state.breaking && row.dataset.breaking !== '1') return false;
-    if (state.upsy && row.dataset.upsy !== '1') return false;
+    if (state.fresh && row.dataset.fresh !== '1') return false;
+    if (state.new && row.dataset.new !== '1') return false;
     if (state.image && row.dataset.image !== '1') return false;
     if (state.q && !row.dataset.title.includes(state.q)) return false;
     if (state.sources.size && !state.sources.has(row.dataset.src)) return false;
@@ -1032,7 +1035,7 @@ SIGNAL_JS = """<script>
     count.textContent = shown + ' of ' + rows.length + ' shown';
     syncNet();
   }
-  for (const name of ['breaking', 'upsy', 'image']) {
+  for (const name of ['fresh', 'new', 'image']) {
     const button = document.getElementById('f-' + name);
     button.addEventListener('click', function () {
       state[name] = !state[name];
@@ -1129,19 +1132,19 @@ def render_listen_lane(episodes: list[dict], now: datetime, limit: int = 3) -> s
 SECTION_COPY = {
     None: ("upsy.si — a live wire on superintelligence",
            "upsy.si — watching superintelligence happen",
-           "Live wire: breaking AI, cybersecurity and technology news with the moments that matter, "
-           "from {sources} sources and {items} stories."),
+           "Live wire: the last day in AI, cybersecurity and technology, from {sources} sources "
+           "and {items} stories."),
     "ai": ("upsy.si — AI",
            "AI — the upsy wire",
-           "Breaking AI news and upsy moments, from {sources} sources and {items} stories."),
+           "The last day in AI, from {sources} sources and {items} stories."),
     "tech": ("upsy.si — technology",
              "Tech — the upsy wire",
-             "Technology news: hardware, platforms, policy and the industry, from {sources} sources "
-             "and {items} stories."),
+             "The last day in technology: hardware, platforms, policy and the industry, from "
+             "{sources} sources and {items} stories."),
     "security": ("upsy.si — cybersecurity",
                  "Cybersecurity — the upsy wire",
-                 "Cybersecurity news: breaches, vulnerabilities, advisories and research, from "
-                 "{sources} sources and {items} stories."),
+                 "The last day in cybersecurity: breaches, vulnerabilities, advisories and "
+                 "research, from {sources} sources and {items} stories."),
 }
 
 
@@ -1149,16 +1152,15 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
     items = section_items(data, section)
     counts = dict(data["counts"])
     counts["items"] = len(items)
-    counts["breaking"] = len([i for i in items if i.get("breaking")])
-    counts["upsy"] = len([i for i in items if i.get("upsy")])
+    counts["fresh"] = len([i for i in items if freshness(i, now) == "fresh"])
+    counts["new"] = len([i for i in items if freshness(i, now) in ("fresh", "new")])
     h1, page_title, page_description = SECTION_COPY.get(section, SECTION_COPY[None])
     page_description = page_description.format(sources=counts["sources"], items=counts["items"])
     canonical = SITE_URL + ("/" if section is None else f"/{SECTION_BY_KEY[section]['slug']}/")
     # The stream is stories. An episode in the stream would be a row with no player, in a list that
     # sorts by freshness - so the newest episode of the week would push a breaking story down.
     stories = stories_of(items)
-    rows = "\n".join(chip_row(i, now, set()) for i in stories[:INDEX_ROWS])
-    anomalies = render_anomalies(moments, items, now)
+    rows = "\n".join(chip_row(i, now) for i in stories[:INDEX_ROWS])
     # Every source, not a top slice: the panel is the filter as well as the list. The number beside a
     # source is what it contributed to *this* build, not the lifetime total the health record keeps -
     # "1287" next to OpenAI when the page holds four hundred stories reads as a bug.
@@ -1175,19 +1177,20 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
     # The front page shared a link with no picture while every story page carried one.
     lead_picture = next((picture_of(i) for i in items if picture_of(i)), "")
     head = BASE_HEAD.format(
-        editor=esc(editor_note(moments)),
+        editor="",
         shots=esc(shot_note()),
         pictures=esc(pictures_note()),
         title=page_title,
         description=truncate(page_description, 200),
         canonical=canonical, og_type="website", site_name=SITE_NAME,
         og_title=page_title,
-        og_description=f"{counts['items']} stories, {counts['sources']} sources, {counts['breaking']} breaking.",
+        og_description=(f"{counts['items']} stories, {counts['sources']} sources, "
+                         f"{counts['fresh']} fresh and {counts['new']} from the last day."),
         og_image=(f'<meta property="og:image" content="{SITE_URL}{lead_picture}">\n' if lead_picture else ""),
         twitter_card="summary_large_image" if lead_picture else "summary",
         extra_meta="", css=CSS)
-    header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
-                           upsy=counts["upsy"], updated=age(data["generated"], now),
+    header = HEADER.format(sources=counts["sources"], fresh=counts["fresh"],
+                           new=counts["new"], updated=age(data["generated"], now),
                            cats=cats_nav(section), sec_style=section_style(section))
     drawer = NET_DRAWER.format(net_rows=net_rows, total=len(meta["health"]))
     listen_lane = render_listen_lane(episodes_of(items), now, limit=3)
@@ -1201,12 +1204,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
   <aside>
     {listen_lane}
     <section>
-      <h3>upsy moments</h3>
-      {anomalies}
-    </section>
-    <section>
       <h3>what this is</h3>
-      <p class="brief">{esc(truncate(moments.get('brief') or 'An automated wire: feeds are read every ten minutes, ranked by freshness, source and how squarely a story sits on superintelligence, and the notable ones are picked out for the rail.', 260))}</p>
+      <p class="brief">An automated wire: the feeds are read every ten minutes and ranked by freshness, source and how squarely a story sits on superintelligence. A story that landed in the last eight hours is marked <b>fresh</b>; one from the last day is marked <b>new</b>. Nothing is judged by hand, and no other label is applied.</p>
     </section>
   </aside>
 </main>
@@ -1219,12 +1218,12 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
   const rows = document.getElementsByClassName('row');
   const button = document.getElementById('load-more');
   let loaded = {INDEX_ROWS};
-  const state = {{ breaking: false, upsy: false, image: false, q: '' }};
+  const state = {{ fresh: false, new: false, image: false, q: '' }};
   function rowFor(item) {{
     const article = document.createElement('article');
     article.className = 'row';
-    article.dataset.upsy = item.upsy ? '1' : '0';
-    article.dataset.breaking = item.breaking ? '1' : '0';
+    article.dataset.fresh = item.fresh === 'fresh' ? '1' : '0';
+    article.dataset.new = (item.fresh === 'fresh' || item.fresh === 'new') ? '1' : '0';
     article.dataset.image = item.image ? '1' : '0';
     article.dataset.title = (item.title + ' ' + item.sourceName).toLowerCase();
     article.dataset.src = item.src || '';
@@ -1252,8 +1251,8 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
     who.textContent = item.sourceName;
     article.querySelector('.age').textContent = item.age;
     const tags = article.querySelector('.src');
-    if (item.breaking) tags.appendChild(tagFor('breaking', 'breaking'));
-    if (item.upsy) tags.appendChild(tagFor('anomaly', 'upsy'));
+    if (item.fresh === 'fresh') tags.appendChild(tagFor('fresh', 'fresh'));
+    else if (item.fresh === 'new') tags.appendChild(tagFor('new', 'new'));
     const link = article.querySelector('h2 a');
     if (safeHref(item.url)) link.setAttribute('href', item.url);
     link.textContent = item.title;
@@ -1319,27 +1318,6 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: s
 {READ_JS}
 </body></html>
 """
-
-
-def render_anomalies(moments: dict, items: list[dict], now: datetime) -> str:
-    """Model-written moments when data/moments.json has them, ranked items when it does not."""
-    cards = []
-    for moment in moments.get("moments", [])[:5]:
-        image = f'<img class="thumb" src="{esc(moment["imageLocal"])}" alt="" loading="lazy" width="112" height="76">' if moment.get("imageLocal") else ""
-        link = moment.get("url") or "#"
-        cards.append(
-            f'<div class="anomaly"><h4><a href="{esc(link)}" target="_blank" rel="noopener nofollow">{esc(truncate(moment.get("title", ""), 90))}</a></h4>'
-            f'<p>{esc(truncate(moment.get("why", ""), 170))}</p>'
-            f'<div class="meta">{esc(moment.get("sourceName", ""))}</div>{image}</div>'
-        )
-    if not cards:
-        for item in [i for i in items if i["upsy"]][:4] or items[:3]:
-            cards.append(
-                f'<div class="anomaly"><h4><a href="{safe_href(item["url"])}" target="_blank" rel="noopener nofollow">{esc(truncate(item["title"], 84))}</a></h4>'
-                f'<p>{esc(truncate(item["summary"] or "Flagged by the stream as an upsy moment.", 150))}</p>'
-                f'<div class="meta">{esc(item["sourceName"])} &middot; {age(item["published"], now)} ago</div></div>'
-            )
-    return "\n      ".join(cards) or '<div class="anomaly"><h4>nothing wild yet</h4><p>The stream has not flagged an anomaly tonight.</p></div>'
 
 
 def text_to_html(text: str) -> str:
@@ -1776,7 +1754,7 @@ def build_story(item: dict, related: list[dict], now: datetime, moments: dict) -
     card = picture_of(item)
     og_image = f'<meta property="og:image" content="{SITE_URL}{esc(card)}">\n' if card else ""
     head = BASE_HEAD.format(
-        editor=esc(editor_note(moments)),
+        editor="",
         shots=esc(shot_note()),
         pictures=esc(pictures_note()),
         title=f"{truncate(item['title'], 90)} | upsy.si",
@@ -1931,7 +1909,7 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
                     f'      </div>\n'
                     f'    </article>')
     head = BASE_HEAD.format(
-        editor=esc(editor_note(moments)),
+        editor="",
         shots=esc(shot_note()),
         pictures=esc(pictures_note()),
         title="Podcasts | upsy.si",
@@ -1997,7 +1975,7 @@ def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> st
             f'{f"<a href=\"{esc(source.get('site',''))}\" target=\"_blank\" rel=\"noopener nofollow\">site</a>" if source.get("site") else ""}</td></tr>'
         )
     head = BASE_HEAD.format(
-        editor=esc(editor_note(moments)),
+        editor="",
         shots=esc(shot_note()),
         pictures=esc(pictures_note()),
         title="sources | upsy.si", description="Every feed upsy.si reads, with its health and freshness.",
@@ -2083,14 +2061,15 @@ def main() -> int:
     data = json.loads((DATA / "news.json").read_text(encoding="utf-8"))
     meta = json.loads((DATA / "meta.json").read_text(encoding="utf-8"))
     sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))
-    moments_path = DATA / "moments.json"
-    moments = json.loads(moments_path.read_text(encoding="utf-8")) if moments_path.exists() else {}
+    # The moments rail is gone. data/moments.json may still sit there from older builds; nothing
+    # reads it, so an editor model is no longer asked to pick anything out.
+    moments = {}
     items = data["items"]
 
     SITE.mkdir(exist_ok=True)
     cached = cache_images(items)
     shot_pictures = attach_shots(items, 200, SITE, IMAGE_CACHE.parent / "shots")
-    moment_pictures = cache_moment_images(moments)
+    moment_pictures = 0
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
@@ -2130,7 +2109,7 @@ def main() -> int:
     for i in stories_of(items):
         row = {"id": i["id"], "title": without_markup(i["title"]), "url": i["url"],
                "sourceName": without_markup(i["sourceName"]), "summary": without_markup(truncate(i["summary"], 200)),
-               "image": picture_of(i), "score": i["score"], "breaking": i["breaking"],
+               "image": picture_of(i), "score": i["score"], "fresh": freshness(i, now),
                "src": src_key(i["sourceName"]),
                # what a card draws when there is no picture: two letters and a hue
                "initials": without_markup(tile_initials(i["sourceName"])),

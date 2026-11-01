@@ -59,18 +59,17 @@ jobs:
       - name: read the feeds
         run: python3 tools/fetch.py
 
-      # Writes the upsy moments with the workflow's own token. A refusal, a rate limit or a broken
-      # reply falls back to the rules, so this step must never be able to stop the site.
-      - name: write the upsy moments
-        continue-on-error: true
-        env:
-          # The workflow's own token needs `models: read` to be accepted by GitHub Models. If you add
-          # a key of your own as the repository secret UPSY_LLM_API_KEY, it is used instead - and if
-          # neither works, moments.py falls back to the ranked candidates and the site still builds.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSY_LLM_API_KEY: ${{ secrets.UPSY_LLM_API_KEY }}
-          UPSY_LLM_MODEL: ${{ vars.UPSY_LLM_MODEL }}
-        run: python3 tools/moments.py
+      # The moments step is off: the rail it fed was removed on D's instruction, because "breaking" and
+      # "anomaly" were labels nobody could explain. Stories now carry only "fresh" (8h) or "new" (24h),
+      # straight from the clock, so nothing needs an editor model. Kept here so the choice is visible.
+      #
+      # - name: write the upsy moments
+      #   continue-on-error: true
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     UPSY_LLM_API_KEY: ${{ secrets.UPSY_LLM_API_KEY }}
+      #     UPSY_LLM_MODEL: ${{ vars.UPSY_LLM_MODEL }}
+      #   run: python3 tools/moments.py
 
       # Roughly half the feeds carry no picture. A headless Chrome, already on the runner image,
       # shoots the story's own page instead - and data/shots rides the cache above, so each page is
