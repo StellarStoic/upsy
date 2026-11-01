@@ -1172,7 +1172,11 @@
    "category": "press",
    "tier": 3,
    "homepage": "https://www.engadget.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "20 items, newest 2026-10-31 on 2026-10-31",
    "note": "D asked for it 2026-10-31. Originally gated on require=general because it was going onto a superintelligence wire, where 19 of its 20 items were commerce and how-to filler (Roku sticks, USB cables, PS5 drawbacks): that gate kept 1 of 20. It belongs in the tech section, where those items are the point, so the gate is gone. There is no topic feed to prefer anyway - /rss.xml serves the same bytes and /tag/ai/feed/, /tag/artificial-intelligence/feed/ and /ai/feed/ all answer 200 with the site's HTML shell rather than XML."
   },
@@ -1305,7 +1309,11 @@
    "category": "press",
    "tier": 2,
    "homepage": "https://techcrunch.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "20 items, newest 2026-11-01 on 2026-10-31",
    "note": "Images, summaries only, small 16 KB feed."
   },
@@ -1316,7 +1324,11 @@
    "category": "press",
    "tier": 2,
    "homepage": "https://www.theverge.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "10 items, newest 2026-10-31 on 2026-10-31",
    "note": "Summaries only, no images in the feed - the picture pipeline will shop for screenshots."
   },
@@ -1327,7 +1339,11 @@
    "category": "press",
    "tier": 3,
    "homepage": "https://www.wired.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "50 items, newest 2026-10-31 on 2026-10-31",
    "note": "50 items per fetch, images on all of them, summaries only."
   },
@@ -1338,7 +1354,11 @@
    "category": "press",
    "tier": 2,
    "homepage": "https://www.404media.co/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "15 items, newest 2026-10-31 on 2026-10-31",
    "note": "Full text and images; independent reporting on platforms and surveillance."
   },
@@ -1349,7 +1369,11 @@
    "category": "aggregator",
    "tier": 3,
    "homepage": "https://slashdot.org/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "15 items, newest 2026-11-01 on 2026-10-31",
    "note": "Aggregator: links point elsewhere, so the ranking demotes it."
   },
@@ -1360,7 +1384,11 @@
    "category": "community",
    "tier": 3,
    "homepage": "https://news.ycombinator.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "19 items, newest 2026-11-01 on 2026-10-31",
    "note": "Community front page, no images and no full text; treated as an aggregator by the ranking."
   },
@@ -1455,7 +1483,11 @@
    "category": "press",
    "tier": 1,
    "homepage": "https://arstechnica.com/",
-   "section": "tech",
+   "sections": [
+    "ai",
+    "tech"
+   ],
+   "require": "general",
    "probe": "20 items, newest 2026-10-31 on 2026-10-31",
    "note": "The wider index feed, for the tech wire. The catalogue already carries ars-technica on the AI wire through its technology-lab path, which answers HTML if you ask for /arstechnica/security - so this keeps the publisher's tech coverage under its own id instead of shadowing the AI one."
   }

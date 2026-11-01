@@ -237,6 +237,53 @@ class PerSourceCap(unittest.TestCase):
         self.assertEqual(len(fetcher.cap_per_source(items, 8)), 8)
 
 
+class SectionMembership(unittest.TestCase):
+    """A source can feed more than one wire, and the AI gate must not decide the others.
+
+    D's rule: "if a source covers ai and tech we can show them on both". The trap is that a gate written
+    for the AI wire would then delete hardware stories from the tech wire for not naming AI.
+    """
+
+    def test_a_source_without_a_section_is_on_the_ai_wire(self):
+        self.assertEqual(fetcher.sections_of({"id": "x"}), ["ai"])
+
+    def test_the_list_form_is_honoured(self):
+        self.assertEqual(fetcher.sections_of({"sections": ["ai", "tech"]}), ["ai", "tech"])
+
+    def test_unknown_section_names_are_dropped(self):
+        self.assertEqual(fetcher.sections_of({"sections": ["tech", "sport"]}), ["tech"])
+
+    def test_an_unknown_name_alone_falls_back_to_the_ai_wire(self):
+        self.assertEqual(fetcher.sections_of({"section": "sport"}), ["ai"])
+
+    def test_a_failed_gate_keeps_the_item_in_the_other_section(self):
+        self.assertEqual(fetcher.wire_membership({"sections": ["ai", "tech"]}, gate_ok=False), ["tech"])
+
+    def test_a_passed_gate_puts_it_on_both(self):
+        self.assertEqual(fetcher.wire_membership({"sections": ["ai", "tech"]}, gate_ok=True), ["ai", "tech"])
+
+    def test_a_refused_item_sits_on_no_wire_at_all(self):
+        self.assertEqual(fetcher.wire_membership({"section": "ai"}, gate_ok=False), [])
+
+    def test_membership_is_read_per_item(self):
+        self.assertTrue(fetcher.belongs_to_wire({"sections": ["tech", "ai"]}))
+        self.assertFalse(fetcher.belongs_to_wire({"sections": ["tech"]}))
+        self.assertFalse(fetcher.belongs_to_wire({"section": "security"}))
+        # An item written before sections existed still belongs on the AI wire.
+        self.assertTrue(fetcher.belongs_to_wire({"section": "ai"}))
+        self.assertTrue(fetcher.belongs_to_wire({}))
+
+    def test_a_dual_source_in_the_catalogue_stays_gated_for_the_ai_wire(self):
+        catalogue = {s["id"]: s for s in
+                     json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]}
+        for sid in ("theverge", "wired", "techcrunch", "engadget", "404media", "hackernews",
+                    "slashdot", "ars-technica-tech"):
+            entry = catalogue[sid]
+            self.assertIn("tech", fetcher.sections_of(entry), sid)
+            self.assertIn("ai", fetcher.sections_of(entry), sid)
+            self.assertTrue(entry.get("require"), f"{sid} is on the AI wire without a gate")
+
+
 class WireSelection(unittest.TestCase):
     """A curated, slow source must reach the page even though it is not news."""
 

@@ -62,6 +62,38 @@ WIRE_PER_SOURCE = 8
 # to read as a section rather than as one guest post a week.
 WIRE_SECTION = "ai"
 SECTION_NAMES = {"ai": "AI", "security": "Cybersecurity", "tech": "Tech"}
+
+
+def sections_of(source: dict) -> list[str]:
+    """Which wires a source belongs to — one or several.
+
+    An outlet that covers both AI and technology belongs on both wires, and its story should not have to
+    pick a side. `section` is the single-section form this catalogue started with; `sections` is the list
+    form. Unknown names are dropped rather than inventing a wire nobody renders.
+    """
+    declared = source.get("sections") or [source.get("section", WIRE_SECTION)]
+    if isinstance(declared, str):
+        declared = [declared]
+    known = [name for name in declared if name in SECTION_NAMES]
+    return list(dict.fromkeys(known)) or [WIRE_SECTION]
+
+
+def wire_membership(source: dict, gate_ok: bool = True) -> list[str]:
+    """Which wires one item from this source belongs to, given its gate verdict.
+
+    The gate is about the AI wire: a hardware story does not have to name AI to belong on a technology
+    wire, so a source in several sections keeps the item elsewhere even when the AI gate refuses it.
+    """
+    declared = sections_of(source)
+    sections = [name for name in declared if name != WIRE_SECTION]
+    if WIRE_SECTION in declared and gate_ok:
+        sections.insert(0, WIRE_SECTION)
+    return sections
+
+
+def belongs_to_wire(item: dict, section: str = WIRE_SECTION) -> bool:
+    """Membership is per item, not per source: one outlet can feed several wires."""
+    return section in (item.get("sections") or [item.get("section", WIRE_SECTION)])
 HALF_LIFE_HOURS = 26.0
 # How much of a feed's own body a per-source topical filter may read. Enough to see what the piece
 # is about, short enough that a passing mention deep in a long essay does not qualify it.
@@ -1458,15 +1490,22 @@ def run(args: argparse.Namespace) -> int:
             ai_terms = source_topic_hits(source, raw)
             # One gate, one definition: `passes_source_filter` is what the tests exercise, so it is what
             # the pipeline calls rather than an inline copy of it that could drift.
+            gate_ok = True
             if require and not passes_source_filter(source, raw):
+                gate_ok = False
+            if gate_ok and source.get("require_title"):
+                title_terms = title_hits(source, raw)
+                if title_terms:
+                    ai_terms = ai_terms or title_terms
+                else:
+                    gate_ok = False
+            # The gate decides AI membership only. A source that also sits in another section keeps the
+            # item there unjudged, because a hardware story does not have to name AI to belong on a
+            # technology wire - and dropping it would make the second section quietly thinner.
+            sections = wire_membership(source, gate_ok)
+            if not sections:
                 filtered += 1
                 continue
-            if source.get("require_title"):
-                title_terms = title_hits(source, raw)
-                if not title_terms:
-                    filtered += 1
-                    continue
-                ai_terms = ai_terms or title_terms
             identifier = hashlib.sha1(clean_url(raw["link"]).encode("utf-8")).hexdigest()[:16]
             published = raw.get("published_dt") or raw.get("published")
             if published and (now - published).days > KEEP_DAYS:
@@ -1485,7 +1524,8 @@ def run(args: argparse.Namespace) -> int:
                 "sourceSite": source.get("site", ""),
                 "sourceName": source["name"],
                 "sourceCategory": source.get("category", "news"),
-                "section": source.get("section", "ai"),
+                "section": sections[0],
+                "sections": sections,
                 "tier": source.get("tier", defaults.get("tier", 2)),
                 "published": published.isoformat(timespec="seconds") if published else None,
                 "author": raw["author"][:120],
@@ -1695,9 +1735,10 @@ def run(args: argparse.Namespace) -> int:
     items.sort(key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
     # One wire per build. Another section's stories are already in hand (and in state), so dropping them
     # here costs nothing on the next run — and it keeps a cybersecurity piece off a superintelligence wire.
-    off_wire = len([i for i in items if i.get("section", "ai") != WIRE_SECTION])
+    # Membership is per item, because one outlet can belong to several wires.
+    off_wire = len([i for i in items if not belongs_to_wire(i)])
     if off_wire:
-        items = [i for i in items if i.get("section", "ai") == WIRE_SECTION]
+        items = [i for i in items if belongs_to_wire(i)]
     # A ticker with twenty-two entries is not a ticker. Highest score wins, one per source.
     breaking_kept, breaking_sources = 0, set()
     for item in items:
@@ -1749,6 +1790,9 @@ def run(args: argparse.Namespace) -> int:
             # item, and forgetting to publish one is exactly how the whole build died on sourceUrl.
             "sourceUrl": item["sourceUrl"], "sourceSite": item.get("sourceSite", ""),
             "sourceCategory": item["sourceCategory"],
+            # Which wires the story belongs to. A published row used to carry only `section`, so a page
+            # for the tech wire could not tell that a WIRED story also belongs there.
+            "sections": item.get("sections") or [item.get("section", WIRE_SECTION)],
             "aiTerms": item.get("aiTerms", []),
             "promo": item.get("promo", False), "question": item.get("question", False),
             "upsyWhy": item.get("upsyWhy", ""),
