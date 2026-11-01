@@ -17,7 +17,8 @@
    "category": "aggregator",
    "tier": 3,
    "homepage": "https://www.bensbites.com/",
-   "probe": "20 items, newest 2026-10-20 on 2026-10-21"
+   "probe": "20 items, newest 2026-10-20 on 2026-10-21",
+   "gateExempt": "an AI newsletter: 14 of 20 recent items name AI in title or summary on 2026-11-01; the rest are sponsor slots rather than off-topic reporting"
   },
   {
    "id": "google-news-agi",
@@ -26,7 +27,8 @@
    "category": "aggregator",
    "tier": 3,
    "homepage": "https://news.google.com/",
-   "fetchArticle": false
+   "fetchArticle": false,
+   "gateExempt": "the feed URL is a Google News query for AGI, so nothing off-topic can arrive (98 of 100 items named AI on 2026-11-01)"
   },
   {
    "id": "rundown-ai",
@@ -35,7 +37,8 @@
    "category": "aggregator",
    "tier": 3,
    "homepage": "https://www.therundown.ai/",
-   "probe": "50 items, newest 2026-10-21 on 2026-10-21"
+   "probe": "50 items, newest 2026-10-21 on 2026-10-21",
+   "gateExempt": "an AI newsletter by construction (38 of 50 recent items named AI on 2026-11-01); the remainder are sponsorship and job posts"
   },
   {
    "id": "techmeme",
@@ -83,7 +86,8 @@
    "category": "aggregator",
    "tier": 3,
    "homepage": "https://tldr.tech/ai",
-   "fetchArticle": false
+   "fetchArticle": false,
+   "gateExempt": "an AI newsletter by construction - every item is a curated AI story"
   },
   {
    "id": "ahead-of-ai",
@@ -189,7 +193,8 @@
    "category": "community",
    "tier": 1,
    "enabled": true,
-   "note": "verified by probe: items with links and dates"
+   "note": "verified by probe: items with links and dates",
+   "gateExempt": "AI alignment research by construction (10 of 10 recent items named AI on 2026-11-01)"
   },
   {
    "id": "hacker-news",
@@ -197,7 +202,10 @@
    "url": "https://news.ycombinator.com/rss",
    "category": "community",
    "tier": 3,
-   "homepage": "https://news.ycombinator.com/"
+   "homepage": "https://news.ycombinator.com/",
+   "enabled": false,
+   "probe": "29 items, 5 naming AI (17%) on 2026-11-01",
+   "note": "Superseded by `hackernews` (hnrss frontpage, gated and in both sections). This one had no gate on the AI wire, so 24 of its 29 items were off-topic and still scored on freshness plus tier - the same way a keyboard hobby post reached the page."
   },
   {
    "id": "hn-frontier",
@@ -206,7 +214,8 @@
    "category": "community",
    "tier": 3,
    "homepage": "https://news.ycombinator.com/",
-   "fetchArticle": false
+   "fetchArticle": false,
+   "gateExempt": "the feed URL is itself the query - AGI, superintelligence or frontier model - so nothing off-topic can arrive"
   },
   {
    "id": "lesswrong",
@@ -216,7 +225,8 @@
    "category": "community",
    "tier": 2,
    "enabled": true,
-   "note": "verified by probe: items with links and dates"
+   "require": "general",
+   "note": "verified by probe: items with links and dates. Gated on 2026-11-01: LessWrong is the whole rationality forum, not an AI feed, and with no gate a fresh hobby post ('Refelting My Keyboard') scored 117.42 - freshness plus tier 2, no topic term involved - and outranked real AI reporting. The general gate keeps 7 of its 10 recent posts, which are the AI-adjacent ones."
   },
   {
    "id": "llamacpp",
@@ -236,7 +246,8 @@
    "category": "community",
    "tier": 3,
    "homepage": "https://www.reddit.com/r/singularity/",
-   "fetchArticle": false
+   "fetchArticle": false,
+   "require": "general"
   },
   {
    "id": "ai2",
@@ -906,7 +917,10 @@
    "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
    "category": "press",
    "tier": 2,
-   "homepage": "https://arstechnica.com/ai/"
+   "homepage": "https://arstechnica.com/ai/",
+   "enabled": false,
+   "probe": "20 items, 7 naming AI (35%) on 2026-11-01",
+   "note": "Superseded by `ars-technica-tech` (the index feed, gated, in both sections). Ungated on the AI wire it put 13 of 20 technology-lab stories on a superintelligence wire."
   },
   {
    "id": "ars-technica-ai",
@@ -915,7 +929,9 @@
    "category": "press",
    "tier": 2,
    "homepage": "https://arstechnica.com/ai/",
-   "probe": "20 items, newest 2026-10-21 on 2026-10-21"
+   "enabled": false,
+   "probe": "403 Forbidden on 2026-11-01",
+   "note": "Answered 20 items on 2026-10-21 and 403 with a 118-byte HTML body on 2026-11-01, so the feed is behind a block now; `ars-technica-tech` carries the same publisher."
   },
   {
    "id": "chinatalk",

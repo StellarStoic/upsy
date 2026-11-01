@@ -283,6 +283,25 @@ class SectionMembership(unittest.TestCase):
             self.assertIn("ai", fetcher.sections_of(entry), sid)
             self.assertTrue(entry.get("require"), f"{sid} is on the AI wire without a gate")
 
+    def test_a_community_or_aggregator_source_on_the_ai_wire_is_gated_or_exempt(self):
+        """The LessWrong keyboard post, as a rule.
+
+        A source with no gate puts everything it publishes on the wire, and the score is freshness plus
+        tier — so a hobby post from this morning outranks AI reporting from yesterday. Any community or
+        aggregator source on the AI wire must therefore carry a gate, or say in `gateExempt` why its
+        feed cannot produce anything off-topic.
+        """
+        sources = json.loads((ROOT / "sources.json").read_text(encoding="utf-8"))["sources"]
+        ungated = [
+            s["id"] for s in sources
+            if s.get("enabled", True)
+            and "ai" in fetcher.sections_of(s)
+            and s.get("category") in ("community", "aggregator")
+            and not (s.get("require") or s.get("require_title"))
+            and not s.get("gateExempt")
+        ]
+        self.assertEqual(ungated, [], f"ungated community/aggregator sources on the AI wire: {ungated}")
+
 
 class WireSelection(unittest.TestCase):
     """A curated, slow source must reach the page even though it is not news."""
