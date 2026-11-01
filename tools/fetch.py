@@ -61,7 +61,7 @@ WIRE_PER_SOURCE = 8
 # on a wire about superintelligence. Sections get their own page and feed once they have sources enough
 # to read as a section rather than as one guest post a week.
 WIRE_SECTION = "ai"
-SECTION_NAMES = {"ai": "AI", "security": "Cybersecurity & tech"}
+SECTION_NAMES = {"ai": "AI", "security": "Cybersecurity", "tech": "Tech"}
 HALF_LIFE_HOURS = 26.0
 # How much of a feed's own body a per-source topical filter may read. Enough to see what the piece
 # is about, short enough that a passing mention deep in a long essay does not qualify it.
