@@ -1733,35 +1733,43 @@ def run(args: argparse.Namespace) -> int:
         item.pop("fetchArticle", None)
 
     items.sort(key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
-    # One wire per build. Another section's stories are already in hand (and in state), so dropping them
-    # here costs nothing on the next run — and it keeps a cybersecurity piece off a superintelligence wire.
-    # Membership is per item, because one outlet can belong to several wires.
-    off_wire = len([i for i in items if not belongs_to_wire(i)])
-    if off_wire:
-        items = [i for i in items if belongs_to_wire(i)]
-    # A ticker with twenty-two entries is not a ticker. Highest score wins, one per source.
-    breaking_kept, breaking_sources = 0, set()
-    for item in items:
-        if not item["breaking"]:
-            continue
-        if breaking_kept >= 6 or item["source"] in breaking_sources:
-            item["breaking"] = False
-            continue
-        breaking_kept += 1
-        breaking_sources.add(item["source"])
-    # Editorial rule: the first page has to be a mix. Without this a single prolific feed fills every
-    # slot it can rank into, which is exactly what the aggregator did before it was demoted.
-    per_source: dict[str, int] = {}
-    ordered: list[dict] = []
-    deferred: list[dict] = []
-    for item in items:
-        seen_count = per_source.get(item["source"], 0)
-        if len(ordered) < 40 and seen_count >= 3:
-            deferred.append(item)
-            continue
-        per_source[item["source"]] = seen_count + 1
-        ordered.append(item)
-    items = select_items(cap_per_source(ordered + deferred, WIRE_PER_SOURCE), sources, MAX_ITEMS)
+    # Each section is its own wire: its own mixing rule, its own per-source cap and its own ceiling. An
+    # item may sit in several wires — a story about an AI-powered intrusion belongs on both the AI and
+    # the cybersecurity pages — so the wires are cut independently and the published list is their union,
+    # de-duplicated by id.
+    def cut_wire(wire_items: list[dict]) -> list[dict]:
+        # A ticker with twenty-two entries is not a ticker. Highest score wins, one per source.
+        breaking_kept, breaking_sources = 0, set()
+        for item in wire_items:
+            if not item["breaking"]:
+                continue
+            if breaking_kept >= 6 or item["source"] in breaking_sources:
+                item["breaking"] = False
+                continue
+            breaking_kept += 1
+            breaking_sources.add(item["source"])
+        # Editorial rule: the first page has to be a mix. Without this a single prolific feed fills every
+        # slot it can rank into, which is exactly what the aggregator did before it was demoted.
+        per_source: dict[str, int] = {}
+        ordered: list[dict] = []
+        deferred: list[dict] = []
+        for item in wire_items:
+            seen_count = per_source.get(item["source"], 0)
+            if len(ordered) < 40 and seen_count >= 3:
+                deferred.append(item)
+                continue
+            per_source[item["source"]] = seen_count + 1
+            ordered.append(item)
+        return select_items(cap_per_source(ordered + deferred, WIRE_PER_SOURCE), sources, MAX_ITEMS)
+
+    wires = {name: cut_wire([i for i in items if belongs_to_wire(i, name)]) for name in SECTION_NAMES}
+    off_wire = len([i for i in items
+                    if not any(belongs_to_wire(i, name) for name in SECTION_NAMES)])
+    unique: dict[str, dict] = {}
+    for name in SECTION_NAMES:
+        for item in wires[name]:
+            unique.setdefault(item["id"], item)
+    items = sorted(unique.values(), key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
 
     counts = {
         "items": len(items),
@@ -1772,6 +1780,7 @@ def run(args: argparse.Namespace) -> int:
         "withImage": len([i for i in items if i["image"]]),
         "withFullText": len([i for i in items if i["contentFrom"]]),
         "sources": len(sources),
+        "bySection": {name: len(wires[name]) for name in SECTION_NAMES},
     }
 
     # Keep state bounded.
@@ -1836,11 +1845,11 @@ def run(args: argparse.Namespace) -> int:
         log(f"{row['id']:<22} {row['status']:<18} {row['items']:>5} {row['new']:>4}  {row['newest'] or '-'}")
     log("")
     log(f"wrote {len(table)} item(s): {counts}")
+    log("sections: " + ", ".join(f"{SECTION_NAMES[name]} {len(wires[name])}" for name in SECTION_NAMES))
     if off_wire:
-        # Say it out loud: a source that contributes nothing to the page is the single most confusing
-        # thing to debug, so the reason is in the log rather than inferred from an absence.
-        log(f"held {off_wire} item(s) for another section "
-            f"({', '.join(sorted({i.get('section', 'ai') for i in collected} - {WIRE_SECTION}))})")
+        # A source that contributes nothing to any page is the hardest thing to debug, so the reason is
+        # in the log rather than inferred from an absence.
+        log(f"{off_wire} item(s) belong to no section and were not published")
     return 0
 
 

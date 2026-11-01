@@ -749,6 +749,44 @@ class PageWeight(unittest.TestCase):
         self.assertIn("<h1", page)
         self.assertIn("superintelligence</h1>", page)
 
+    def test_the_homepage_mixes_every_section_and_marks_no_category(self):
+        now = build_site.datetime.now(build_site.timezone.utc)
+        page = build_site.build_index(self.fixture(), {"health": []}, {}, now)
+        self.assertIn('<a href="/" aria-current="page">all</a>', page)
+        for entry in build_site.SECTIONS:
+            self.assertIn(f'<a href="/{entry["slug"]}/">{entry["label"]}</a>', page)
+        # The homepage belongs to every wire, so it carries no single category's colour.
+        self.assertNotIn("--sec:", page)
+
+    def test_a_section_page_carries_its_own_colour_and_mark(self):
+        now = build_site.datetime.now(build_site.timezone.utc)
+        for entry in build_site.SECTIONS:
+            page = build_site.build_index(self.fixture(sections=[entry["key"]], section=entry["key"]),
+                                          {"health": []}, {}, now, section=entry["key"])
+            self.assertIn(f'--sec:{entry["accent"]}', page)
+            self.assertIn(f'aria-current="page">{entry["label"]}</a>', page)
+            self.assertIn(f'rel="canonical" href="https://upsy.si/{entry["slug"]}/"', page)
+
+    def test_a_section_page_shows_only_its_own_stories(self):
+        now = build_site.datetime.now(build_site.timezone.utc)
+        data = self.fixture()
+        data["items"] = [
+            {**data["items"][0], "id": "ai1", "title": "An AI story", "sections": ["ai"]},
+            {**data["items"][0], "id": "te1", "title": "A gadget story", "sections": ["tech"]},
+            {**data["items"][0], "id": "se1", "title": "A breach story", "sections": ["security"]},
+            {**data["items"][0], "id": "du1", "title": "An AI-powered breach", "sections": ["ai", "security"]},
+        ]
+        def titles(section):
+            page = build_site.build_index(data, {"health": []}, {}, now, section=section)
+            return {t for t in ("An AI story", "A gadget story", "A breach story", "An AI-powered breach")
+                    if t in page}
+        self.assertEqual(titles("ai"), {"An AI story", "An AI-powered breach"})
+        self.assertEqual(titles("tech"), {"A gadget story"})
+        # A story about both lands on both pages, which is the point of per-item membership.
+        self.assertEqual(titles("security"), {"A breach story", "An AI-powered breach"})
+        self.assertEqual(titles(None), {"An AI story", "A gadget story", "A breach story",
+                                        "An AI-powered breach"})
+
     def test_the_front_page_shares_a_picture_this_build_owns(self):
         data = self.fixture(imageLocal="/img/abc123.webp")
         page = build_site.build_index(data, {"health": []}, {}, build_site.datetime.now(

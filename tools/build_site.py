@@ -24,6 +24,39 @@ SITE = ROOT / "_site"
 DATA = ROOT / "data"
 SITE_URL = "https://upsy.si"
 SITE_NAME = "upsy.si"
+
+# The sections. The palette already carries three accents, so the switcher and the brand's "sy" borrow
+# them rather than inventing colours: AI keeps the lime it has always had, tech is the cyan the brand
+# already used, and cybersecurity takes the alert orange.
+SECTIONS = (
+    {"key": "ai", "label": "AI", "slug": "ai", "accent": "var(--upsy)"},
+    {"key": "tech", "label": "Tech", "slug": "tech", "accent": "var(--cool)"},
+    {"key": "security", "label": "Cyber", "slug": "cyber", "accent": "var(--hot)"},
+)
+SECTION_BY_KEY = {s["key"]: s for s in SECTIONS}
+
+
+def section_style(section):
+    """The colour of the page you are on, as a custom property on the header."""
+    entry = SECTION_BY_KEY.get(section or "")
+    return f' style="--sec:{entry["accent"]}"' if entry else ""
+
+
+def cats_nav(active=None):
+    """The thin line under the brand: every wire, the current one marked."""
+    links = [f'<a href="/"{" aria-current=\"page\"" if active is None else ""}>all</a>']
+    for entry in SECTIONS:
+        current = ' aria-current="page"' if active == entry["key"] else ""
+        links.append(f'<a href="/{entry["slug"]}/"{current}>{entry["label"]}</a>')
+    return '<nav class="cats" aria-label="sections">' + "".join(links) + "</nav>"
+
+
+def section_items(data, section=None):
+    """The items on one wire: everything on the homepage, one section's own stories elsewhere."""
+    items = data["items"]
+    if section is None:
+        return items
+    return [i for i in items if section in (i.get("sections") or [i.get("section", "ai")])]
 TAGLINE = "watching superintelligence happen"
 INDEX_ROWS = 120
 FEED_ITEMS = 60
@@ -577,7 +610,15 @@ CSS = """
   .skip:focus { left:8px; top:8px; background:var(--panel); padding:8px 12px; z-index:9; }
   header.top { display:flex; align-items:center; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   .brand { font-size:21px; letter-spacing:.3em; text-transform:uppercase; }
-  .brand b { color:var(--cool); font-weight:400; }
+  .brand b { color:var(--sec, var(--cool)); font-weight:400; }
+  /* The switcher sits on its own line under the brand - one thin rule, category names in small caps at
+     the right, the current one carrying the page colour. */
+  header.top nav.cats { flex-basis:100%; display:flex; justify-content:flex-end; align-items:baseline;
+                        gap:14px; border-top:1px solid var(--line); margin-top:4px; padding-top:6px;
+                        font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; }
+  nav.cats a { color:var(--dim); }
+  nav.cats a:hover, nav.cats a:focus-visible { color:var(--fg); }
+  nav.cats a[aria-current="page"] { color:var(--sec, var(--upsy)); }
   .status { margin-left:auto; display:flex; gap:16px; align-items:center; font-size:11px; color:var(--dim); flex-wrap:wrap; }
   .status b { font-weight:400; color:var(--upsy); }
   .status .hot { color:var(--hot); }
@@ -808,7 +849,7 @@ BASE_HEAD = """<!doctype html>
 <a class="skip" href="#stream">skip to the stream</a>
 """
 
-HEADER = """<header class="top">
+HEADER = """<header class="top"{sec_style}>
   <a class="brand" href="/">up<b>sy</b></a>
   <div class="status">
     <span><i class="dot"></i>watching {sources} sources</span>
@@ -829,6 +870,7 @@ HEADER = """<header class="top">
     </svg>
     <span class="net-count" id="net-count" hidden></span>
   </button>
+{cats}
 </header>
 """
 
@@ -1082,9 +1124,34 @@ def render_listen_lane(episodes: list[dict], now: datetime, limit: int = 3) -> s
             + f'\n      <p class="brief"><a href="/listen.html">every episode and how to play it</a></p>\n    </section>')
 
 
-def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
-    items = data["items"]
-    counts = data["counts"]
+SECTION_COPY = {
+    None: ("upsy.si — a live wire on superintelligence",
+           "upsy.si — watching superintelligence happen",
+           "Live wire: breaking AI, cybersecurity and technology news with the moments that matter, "
+           "from {sources} sources and {items} stories."),
+    "ai": ("upsy.si — AI",
+           "AI — the upsy wire",
+           "Breaking AI news and upsy moments, from {sources} sources and {items} stories."),
+    "tech": ("upsy.si — technology",
+             "Tech — the upsy wire",
+             "Technology news: hardware, platforms, policy and the industry, from {sources} sources "
+             "and {items} stories."),
+    "security": ("upsy.si — cybersecurity",
+                 "Cybersecurity — the upsy wire",
+                 "Cybersecurity news: breaches, vulnerabilities, advisories and research, from "
+                 "{sources} sources and {items} stories."),
+}
+
+
+def build_index(data: dict, meta: dict, moments: dict, now: datetime, section: str = None) -> str:
+    items = section_items(data, section)
+    counts = dict(data["counts"])
+    counts["items"] = len(items)
+    counts["breaking"] = len([i for i in items if i.get("breaking")])
+    counts["upsy"] = len([i for i in items if i.get("upsy")])
+    h1, page_title, page_description = SECTION_COPY.get(section, SECTION_COPY[None])
+    page_description = page_description.format(sources=counts["sources"], items=counts["items"])
+    canonical = SITE_URL + ("/" if section is None else f"/{SECTION_BY_KEY[section]['slug']}/")
     # The stream is stories. An episode in the stream would be a row with no player, in a list that
     # sorts by freshness - so the newest episode of the week would push a breaking story down.
     stories = stories_of(items)
@@ -1109,20 +1176,20 @@ def build_index(data: dict, meta: dict, moments: dict, now: datetime) -> str:
         editor=esc(editor_note(moments)),
         shots=esc(shot_note()),
         pictures=esc(pictures_note()),
-        title="upsy.si \u2014 watching superintelligence happen",
-        description=truncate("Live wire on superintelligence: breaking news and upsy moments in AI, "
-                             f"from {counts['sources']} sources and {counts['items']} stories.", 200),
-        canonical=SITE_URL + "/", og_type="website", site_name=SITE_NAME,
-        og_title="upsy.si \u2014 watching superintelligence happen",
+        title=page_title,
+        description=truncate(page_description, 200),
+        canonical=canonical, og_type="website", site_name=SITE_NAME,
+        og_title=page_title,
         og_description=f"{counts['items']} stories, {counts['sources']} sources, {counts['breaking']} breaking.",
         og_image=(f'<meta property="og:image" content="{SITE_URL}{lead_picture}">\n' if lead_picture else ""),
         twitter_card="summary_large_image" if lead_picture else "summary",
         extra_meta="", css=CSS)
     header = HEADER.format(sources=counts["sources"], breaking=counts["breaking"],
-                           upsy=counts["upsy"], updated=age(data["generated"], now))
+                           upsy=counts["upsy"], updated=age(data["generated"], now),
+                           cats=cats_nav(section), sec_style=section_style(section))
     drawer = NET_DRAWER.format(net_rows=net_rows, total=len(meta["health"]))
     listen_lane = render_listen_lane(episodes_of(items), now, limit=3)
-    return f"""{head}<h1 class="vh">upsy.si \u2014 a live wire on superintelligence</h1>{header}{drawer}{FILTER_BAR}
+    return f"""{head}<h1 class="vh">{esc(h1)}</h1>{header}{drawer}{FILTER_BAR}
 <span id="top-mark" aria-hidden="true"></span>
 <main>
   <section class="rows" id="stream">
@@ -1303,7 +1370,7 @@ def text_to_html(text: str) -> str:
     return body
 
 
-LISTEN_HEADER = """<header class="top">
+LISTEN_HEADER = """<header class="top"{sec_style}>
   <a class="brand" href="/">up<b>sy</b></a>
   <div class="status">
     <span><i class="dot"></i>{shows} shows</span>
@@ -1872,7 +1939,8 @@ def build_listen(items: list[dict], now: datetime, moments: dict) -> str:
         og_title="Podcasts | upsy.si",
         og_description=f"{len(episodes)} episodes from {len({e['sourceName'] for e in episodes})} shows.",
         og_image="", twitter_card="summary", extra_meta="", css=CSS)
-    header = LISTEN_HEADER.format(shows=len({e["sourceName"] for e in episodes}),
+    header = LISTEN_HEADER.format(cats=cats_nav(), sec_style=section_style(None),
+                                  shows=len({e["sourceName"] for e in episodes}),
                                   episodes=len(episodes), updated=age(data_timestamp(), now))
     body = "\n    ".join(rows) or "<p>No episodes on the wire yet.</p>"
     if trimmed:
@@ -1951,7 +2019,8 @@ def build_sources(meta: dict, sources: dict, now: datetime, moments: dict) -> st
 """
 
 
-def build_feed(items: list[dict], now: datetime) -> str:
+def build_feed(items: list[dict], now: datetime, path: str = "/feed.xml",
+               title: str = "upsy.si") -> str:
     updated = now.isoformat(timespec="seconds")
     entries = []
     for item in items[:FEED_ITEMS]:
@@ -1968,7 +2037,7 @@ def build_feed(items: list[dict], now: datetime) -> str:
   <title>upsy.si</title>
   <subtitle>{esc(TAGLINE)}</subtitle>
   <link href="{SITE_URL}/"/>
-  <link rel="self" href="{SITE_URL}/feed.xml"/>
+  <link rel="self" href="{SITE_URL}{path}"/>
   <id>tag:upsy.si,2026:feed</id>
   <updated>{updated}</updated>
   <rights>Headlines and links belong to their publishers. upsy.si aggregates and links out.</rights>
@@ -2023,6 +2092,18 @@ def main() -> int:
     (SITE / "s").mkdir(exist_ok=True)
     (SITE / "data").mkdir(exist_ok=True)
     (SITE / "index.html").write_text(build_index(data, meta, moments, now), encoding="utf-8")
+    # One page and one feed per section. The homepage carries them all; a category page is the same
+    # layout narrowed to its own stories, so a reader who only wants cybersecurity never sees a phone
+    # review and never has to filter for it.
+    for entry in SECTIONS:
+        section_dir = SITE / entry["slug"]
+        section_dir.mkdir(parents=True, exist_ok=True)
+        own = section_items(data, entry["key"])
+        (section_dir / "index.html").write_text(
+            build_index(data, meta, moments, now, section=entry["key"]), encoding="utf-8")
+        (section_dir / "feed.xml").write_text(
+            build_feed(own, now, path=f'/{entry["slug"]}/feed.xml',
+                       title=f'upsy.si — {entry["label"]}'), encoding="utf-8")
     (SITE / "listen.html").write_text(build_listen(items, now, moments), encoding="utf-8")
     for item in items:
         related = [i for i in items if i["id"] != item["id"] and i["source"] == item["source"]][:3]
@@ -2076,7 +2157,8 @@ def main() -> int:
         json.dumps({"generated": data["generated"], "counts": data["counts"]}, ensure_ascii=False), encoding="utf-8")
     (SITE / "sources.html").write_text(build_sources(meta, sources, now, moments), encoding="utf-8")
     (SITE / "feed.xml").write_text(build_feed(items, now), encoding="utf-8")
-    (SITE / "sitemap.xml").write_text(build_sitemap(items, now), encoding="utf-8")
+    section_pages = tuple(f'/{entry["slug"]}/' for entry in SECTIONS)
+    (SITE / "sitemap.xml").write_text(build_sitemap(items, now, extra_pages=("/listen.html",) + section_pages), encoding="utf-8")
     (SITE / "robots.txt").write_text(
         f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}/sitemap.xml\n", encoding="utf-8")
     (SITE / "CNAME").write_text("upsy.si\n", encoding="utf-8")
