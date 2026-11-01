@@ -56,6 +56,12 @@ TIER_WEIGHT = {1: 42.0, 2: 22.0, 3: 8.0}
 # opening view mixed; without a wire-wide cap a feed that publishes a hundred items a day still fills
 # everything below it, and a fifty-source catalogue becomes one blog with guests.
 WIRE_PER_SOURCE = 8
+# The wire this build publishes. A source may declare `section` (default "ai"); a story from another
+# section is fetched, counted in that source's health line and kept in state, but it must never appear
+# on a wire about superintelligence. Sections get their own page and feed once they have sources enough
+# to read as a section rather than as one guest post a week.
+WIRE_SECTION = "ai"
+SECTION_NAMES = {"ai": "AI", "security": "Cybersecurity & tech"}
 HALF_LIFE_HOURS = 26.0
 # How much of a feed's own body a per-source topical filter may read. Enough to see what the piece
 # is about, short enough that a passing mention deep in a long essay does not qualify it.
@@ -1479,6 +1485,7 @@ def run(args: argparse.Namespace) -> int:
                 "sourceSite": source.get("site", ""),
                 "sourceName": source["name"],
                 "sourceCategory": source.get("category", "news"),
+                "section": source.get("section", "ai"),
                 "tier": source.get("tier", defaults.get("tier", 2)),
                 "published": published.isoformat(timespec="seconds") if published else None,
                 "author": raw["author"][:120],
@@ -1686,6 +1693,11 @@ def run(args: argparse.Namespace) -> int:
         item.pop("fetchArticle", None)
 
     items.sort(key=lambda i: (-(i["score"] or 0), i.get("published") or ""))
+    # One wire per build. Another section's stories are already in hand (and in state), so dropping them
+    # here costs nothing on the next run — and it keeps a cybersecurity piece off a superintelligence wire.
+    off_wire = len([i for i in items if i.get("section", "ai") != WIRE_SECTION])
+    if off_wire:
+        items = [i for i in items if i.get("section", "ai") == WIRE_SECTION]
     # A ticker with twenty-two entries is not a ticker. Highest score wins, one per source.
     breaking_kept, breaking_sources = 0, set()
     for item in items:
@@ -1780,6 +1792,11 @@ def run(args: argparse.Namespace) -> int:
         log(f"{row['id']:<22} {row['status']:<18} {row['items']:>5} {row['new']:>4}  {row['newest'] or '-'}")
     log("")
     log(f"wrote {len(table)} item(s): {counts}")
+    if off_wire:
+        # Say it out loud: a source that contributes nothing to the page is the single most confusing
+        # thing to debug, so the reason is in the log rather than inferred from an absence.
+        log(f"held {off_wire} item(s) for another section "
+            f"({', '.join(sorted({i.get('section', 'ai') for i in collected} - {WIRE_SECTION}))})")
     return 0
 
 

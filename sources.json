@@ -1175,6 +1175,17 @@
    "require": "general",
    "probe": "20 items, newest 2026-10-31 on 2026-10-31",
    "note": "D asked for it 2026-10-31. The feed is a commerce/how-to firehose (Roku sticks, USB cables, PS5 drawbacks) and there is no topic feed to prefer: /rss.xml serves the same general feed, and /tag/ai/feed/, /tag/artificial-intelligence/feed/ and /ai/feed/ all answer 200 with the site's HTML shell rather than XML. Gated on require=general, which kept 1 of 20 items on the day it was added."
+  },
+  {
+   "id": "weekinsecurity",
+   "name": "This Week in Security",
+   "url": "https://this.weekinsecurity.com/rss/",
+   "category": "press",
+   "tier": 2,
+   "homepage": "https://this.weekinsecurity.com/",
+   "section": "security",
+   "probe": "15 items, newest 2026-10-30 on 2026-10-31",
+   "note": "D's first cybersecurity source (2026-10-31). A weekly newsletter that ships full text and images in the feed: 15 items spanning 2026-08-07 to 2026-10-30, so about one a week. /feed answers with HTML; /rss/ is the feed. Captured into the security section, which has no page yet - it stays off the AI wire until it does."
   }
  ]
 }
